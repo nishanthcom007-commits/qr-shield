@@ -11,7 +11,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- ZXing for QR decode from camera/image -->
+  <!-- Robust Dual QR Decoding Engines (jsQR + ZXing) -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
 
   <style>
@@ -1463,18 +1464,30 @@ function switchTab(name, btn) {
 // Camera Scanner
 async function startCamera() {
   try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }
-    });
+    const constraints = {
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { min: 640, ideal: 1280 },
+        height: { min: 480, ideal: 720 }
+      }
+    };
+    cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
     const vid = document.getElementById('camera-video');
     vid.srcObject = cameraStream;
+    vid.setAttribute('playsinline', 'true');
+    vid.setAttribute('autoplay', 'true');
     vid.style.display = 'block';
+    
     document.getElementById('camera-placeholder').style.display = 'none';
     document.getElementById('scan-overlay').style.display = 'flex';
-    document.getElementById('camera-status').textContent = '🔍 Camera active. Point at a QR code to scan...';
+    document.getElementById('camera-status').textContent = '🔍 Point camera steadily at QR code...';
+
+    // Ensure video is actively playing before starting scanner loop
+    await vid.play().catch(() => {});
     startContinuousScan(vid);
   } catch(e) {
-    showToast('Camera permission denied or camera not found.', 'error');
+    console.error('Camera initialization error:', e);
+    showToast('Camera error: ' + (e.message || 'Permission denied. Please allow camera access in browser settings.'), 'error');
   }
 }
 
@@ -1493,36 +1506,58 @@ function stopCamera() {
 }
 
 function startContinuousScan(videoEl) {
-  if (typeof ZXing === 'undefined') {
-    showToast('QR decoder library failed to initialize.', 'error');
-    return;
-  }
   const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   let detected = false;
+  let frameCount = 0;
 
   function tick() {
     if (!cameraStream || detected) return;
-    if (!videoEl.videoWidth) {
-      requestAnimationFrame(tick);
-      return;
-    }
-    canvas.width  = videoEl.videoWidth;
-    canvas.height = videoEl.videoHeight;
-    ctx.drawImage(videoEl, 0, 0);
-    try {
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const lum = new ZXing.RGBLuminanceSource(imgData.data, canvas.width, canvas.height);
-      const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
-      const res = new ZXing.QRCodeReader().decode(bmp);
-      if (res && res.text) {
-        detected = true;
-        onQRDetected(res.text);
-        return;
+
+    if (videoEl.readyState === videoEl.HAVE_ENOUGH_DATA && videoEl.videoWidth > 0) {
+      canvas.width  = videoEl.videoWidth;
+      canvas.height = videoEl.videoHeight;
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      // Primary Engine: jsQR (extremely robust, works with rotated, warped or blurry frames)
+      if (typeof jsQR !== 'undefined') {
+        try {
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "attemptBoth"
+          });
+          if (code && code.data && code.data.trim()) {
+            detected = true;
+            onQRDetected(code.data.trim());
+            return;
+          }
+        } catch(err) {
+          console.warn('jsQR tick error:', err);
+        }
       }
-    } catch(_) {}
+
+      // Secondary Fallback Engine: ZXing (runs every 3rd frame to conserve CPU)
+      frameCount++;
+      if (frameCount % 3 === 0 && typeof ZXing !== 'undefined') {
+        try {
+          const lum = new ZXing.RGBLuminanceSource(imageData.data, canvas.width, canvas.height);
+          const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
+          const res = new ZXing.QRCodeReader().decode(bmp);
+          if (res && res.text && res.text.trim()) {
+            detected = true;
+            onQRDetected(res.text.trim());
+            return;
+          }
+        } catch(_) {
+          // Normal: throws NotFoundException when frame has no QR code
+        }
+      }
+    }
+
     requestAnimationFrame(tick);
   }
+
   requestAnimationFrame(tick);
 }
 
@@ -1594,20 +1629,48 @@ async function analyzeUploadedQR() {
     const canvas = document.createElement('canvas');
     canvas.width = imgEl.naturalWidth || 400;
     canvas.height = imgEl.naturalHeight || 400;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(imgEl, 0, 0);
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const lum = new ZXing.RGBLuminanceSource(imgData.data, canvas.width, canvas.height);
-    const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
-    const result = new ZXing.QRCodeReader().decode(bmp);
-    if (result && result.text) {
+
+    let decodedText = null;
+
+    // Primary: jsQR
+    if (typeof jsQR !== 'undefined') {
+      try {
+        const code = jsQR(imgData.data, imgData.width, imgData.height, {
+          inversionAttempts: "attemptBoth"
+        });
+        if (code && code.data && code.data.trim()) {
+          decodedText = code.data.trim();
+        }
+      } catch(e) {
+        console.warn('jsQR image upload decode error:', e);
+      }
+    }
+
+    // Fallback: ZXing
+    if (!decodedText && typeof ZXing !== 'undefined') {
+      try {
+        const lum = new ZXing.RGBLuminanceSource(imgData.data, canvas.width, canvas.height);
+        const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
+        const result = new ZXing.QRCodeReader().decode(bmp);
+        if (result && result.text && result.text.trim()) {
+          decodedText = result.text.trim();
+        }
+      } catch(e) {
+        console.warn('ZXing image upload decode error:', e);
+      }
+    }
+
+    if (decodedText) {
       showToast('QR code decoded successfully!', 'success');
-      startAnalysis(result.text);
+      startAnalysis(decodedText);
     } else {
-      showToast('No readable QR code found in this image.', 'error');
+      showToast('No readable QR code found in this image. Ensure clear focus and lighting.', 'error');
     }
   } catch(e) {
-    showToast('Failed to decode image. Ensure high contrast and focus.', 'error');
+    showToast('Failed to decode image: ' + (e.message || 'Unknown error'), 'error');
   }
 }
 
