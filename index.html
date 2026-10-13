@@ -1311,8 +1311,8 @@
           <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
           <rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h4v4m0 3h3m-3-3v3"/>
         </svg>
-        <h3>Drag &amp; drop QR image here</h3>
-        <p>Supports PNG, JPG, WEBP, SVG &bull; Maximum file size 10MB</p>
+        <h3>Choose from gallery or drag &amp; drop photo</h3>
+        <p>Supports full screenshots, flyers, photos with words, posters &bull; Automatic QR localization</p>
       </div>
       <input type="file" id="file-input" accept="image/*" onchange="handleFileSelect(event)" />
       
@@ -1321,8 +1321,9 @@
         <div class="upload-preview-info">
           <div class="fname" id="preview-fname"></div>
           <div class="fsize" id="preview-fsize"></div>
+          <div id="upload-status" style="font-size:0.84rem; color:var(--accent); font-weight:500; margin-top:4px;"></div>
         </div>
-        <button class="btn-upload-analyze" onclick="analyzeUploadedQR()">Inspect QR Image</button>
+        <button class="btn-upload-analyze" id="btn-upload-analyze" onclick="analyzeUploadedQR()">Inspect QR Image</button>
       </div>
     </div>
 
@@ -1644,7 +1645,15 @@ function processFile(file) {
   uploadedFile = file;
   const reader = new FileReader();
   reader.onload = ev => {
-    document.getElementById('preview-img').src = ev.target.result;
+    const imgEl = document.getElementById('preview-img');
+    const statusEl = document.getElementById('upload-status');
+    if (statusEl) statusEl.textContent = '🔍 Scanning photo for QR code...';
+    
+    imgEl.onload = () => {
+      // Auto-analyze immediately as soon as photo is selected from gallery
+      analyzeUploadedQR();
+    };
+    imgEl.src = ev.target.result;
     document.getElementById('preview-fname').textContent = file.name;
     document.getElementById('preview-fsize').textContent = formatBytes(file.size);
     document.getElementById('upload-preview').style.display = 'flex';
@@ -1658,60 +1667,196 @@ function formatBytes(b) {
   return (b / 1048576).toFixed(1) + ' MB';
 }
 
+// ── Multi-Stage Photo & Gallery QR Localization Engine ──
+// Accurately extracts QR codes from full screenshots, flyers, and photos with text/words
+async function detectQRInImage(imgEl) {
+  // Ensure image element dimensions are loaded
+  await new Promise(r => { if (imgEl.complete && imgEl.naturalWidth) r(); else imgEl.onload = r; });
+  const w = imgEl.naturalWidth;
+  const h = imgEl.naturalHeight;
+  if (!w || !h) return null;
+
+  // ── Strategy 1: Native Hardware BarcodeDetector (Chrome, Edge, Android, Safari 17+) ──
+  // Uses neural machine-learning barcode locator that handles arbitrary text, logos & rotations
+  if ('BarcodeDetector' in window) {
+    try {
+      const detector = new BarcodeDetector({ formats: ['qr_code'] });
+      const barcodes = await detector.detect(imgEl);
+      if (barcodes && barcodes.length) {
+        for (const b of barcodes) {
+          if (b.rawValue && b.rawValue.trim()) {
+            return b.rawValue.trim();
+          }
+        }
+      }
+    } catch(err) {
+      console.warn('Native BarcodeDetector skipped:', err);
+    }
+  }
+
+  // ── Strategy 2: Multi-Scale Pyramid Scanning (jsQR) ──
+  // Downscales high-resolution camera photos (e.g. 12MP-4K phone photos) to optimal QR finder resolution
+  const maxDim = Math.max(w, h);
+  const targetSizes = [1100, 800, 550];
+  const scales = [];
+  if (maxDim <= 1500) scales.push(1.0);
+  targetSizes.forEach(ts => {
+    if (maxDim > ts) scales.push(ts / maxDim);
+  });
+  if (maxDim > 1500 && !scales.includes(1.0)) scales.push(1.0);
+
+  for (const scale of scales) {
+    const cw = Math.round(w * scale);
+    const ch = Math.round(h * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(imgEl, 0, 0, cw, ch);
+    const idata = ctx.getImageData(0, 0, cw, ch);
+
+    if (typeof jsQR !== 'undefined') {
+      try {
+        const code = jsQR(idata.data, cw, ch, { inversionAttempts: 'attemptBoth' });
+        if (code && code.data && code.data.trim()) {
+          return code.data.trim();
+        }
+      } catch(_) {}
+    }
+  }
+
+  // ── Strategy 3: Multi-Region Candidate Slicing ──
+  // Eliminates surrounding words, text paragraphs, buttons, and UI elements by inspecting candidate sub-regions
+  const subRegions = [
+    // Right half (extremely common in screenshots, desktop UI, and layout cards)
+    { x: 0.40, y: 0.0,  w: 0.60, h: 1.0 },
+    // Left half
+    { x: 0.0,  y: 0.0,  w: 0.60, h: 1.0 },
+    // Center 70%
+    { x: 0.15, y: 0.10, w: 0.70, h: 0.80 },
+    // 4 Quadrants
+    { x: 0.40, y: 0.0,  w: 0.60, h: 0.60 }, // Top-Right
+    { x: 0.40, y: 0.40, w: 0.60, h: 0.60 }, // Bottom-Right
+    { x: 0.0,  y: 0.0,  w: 0.60, h: 0.60 }, // Top-Left
+    { x: 0.0,  y: 0.40, w: 0.60, h: 0.60 }, // Bottom-Left
+    // Top half & Bottom half
+    { x: 0.0,  y: 0.35, w: 1.0,  h: 0.65 },
+    { x: 0.0,  y: 0.0,  w: 1.0,  h: 0.65 }
+  ];
+
+  for (const r of subRegions) {
+    const sw = Math.round(w * r.w);
+    const sh = Math.round(h * r.h);
+    const sx = Math.round(w * r.x);
+    const sy = Math.round(h * r.y);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = sw;
+    canvas.height = sh;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, sw, sh);
+    const idata = ctx.getImageData(0, 0, sw, sh);
+
+    if (typeof jsQR !== 'undefined') {
+      try {
+        const code = jsQR(idata.data, sw, sh, { inversionAttempts: 'attemptBoth' });
+        if (code && code.data && code.data.trim()) {
+          return code.data.trim();
+        }
+      } catch(_) {}
+    }
+  }
+
+  // ── Strategy 4: High-Contrast & Lighting Normalization ──
+  // Enhances contrast for photos taken of physical screens or printed paper under shadows/glare
+  const boostW = Math.min(w, 1000);
+  const boostH = Math.round(h * (boostW / w));
+  const boostCanvas = document.createElement('canvas');
+  boostCanvas.width = boostW;
+  boostCanvas.height = boostH;
+  const boostCtx = boostCanvas.getContext('2d', { willReadFrequently: true });
+  boostCtx.filter = 'contrast(1.6) brightness(1.05)';
+  boostCtx.drawImage(imgEl, 0, 0, boostW, boostH);
+  const boostData = boostCtx.getImageData(0, 0, boostW, boostH);
+
+  if (typeof jsQR !== 'undefined') {
+    try {
+      const code = jsQR(boostData.data, boostW, boostH, { inversionAttempts: 'attemptBoth' });
+      if (code && code.data && code.data.trim()) {
+        return code.data.trim();
+      }
+    } catch(_) {}
+  }
+
+  // ── Strategy 5: Deep ZXing MultiFormatReader with TRY_HARDER Hint ──
+  if (typeof ZXing !== 'undefined') {
+    try {
+      const hints = new Map();
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
+      const reader = new ZXing.MultiFormatReader();
+      reader.setHints(hints);
+
+      const lum = new ZXing.RGBLuminanceSource(boostData.data, boostW, boostH);
+      const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
+      const res = reader.decode(bmp);
+      if (res && res.getText && res.getText().trim()) {
+        return res.getText().trim();
+      }
+    } catch(_) {}
+
+    // Fallback on raw canvas
+    try {
+      const rawCanvas = document.createElement('canvas');
+      rawCanvas.width = boostW;
+      rawCanvas.height = boostH;
+      const rawCtx = rawCanvas.getContext('2d', { willReadFrequently: true });
+      rawCtx.drawImage(imgEl, 0, 0, boostW, boostH);
+      const rawData = rawCtx.getImageData(0, 0, boostW, boostH);
+      const lum = new ZXing.RGBLuminanceSource(rawData.data, boostW, boostH);
+      const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
+      const res = new ZXing.QRCodeReader().decode(bmp);
+      if (res && res.text && res.text.trim()) {
+        return res.text.trim();
+      }
+    } catch(_) {}
+  }
+
+  return null;
+}
+
 async function analyzeUploadedQR() {
   if (!uploadedFile) {
     showToast('Please choose a QR code image first.', 'error');
     return;
   }
-  showToast('Reading QR code image...', '');
+  const btn = document.getElementById('btn-upload-analyze');
+  const statusEl = document.getElementById('upload-status');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Locating QR Code...';
+  }
+  if (statusEl) statusEl.textContent = '🔍 Analyzing image & isolating QR code...';
+
   try {
     const imgEl = document.getElementById('preview-img');
-    await new Promise(r => { if (imgEl.complete) r(); else imgEl.onload = r; });
-    const canvas = document.createElement('canvas');
-    canvas.width = imgEl.naturalWidth || 400;
-    canvas.height = imgEl.naturalHeight || 400;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(imgEl, 0, 0);
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-    let decodedText = null;
-
-    // Primary: jsQR
-    if (typeof jsQR !== 'undefined') {
-      try {
-        const code = jsQR(imgData.data, imgData.width, imgData.height, {
-          inversionAttempts: "attemptBoth"
-        });
-        if (code && code.data && code.data.trim()) {
-          decodedText = code.data.trim();
-        }
-      } catch(e) {
-        console.warn('jsQR image upload decode error:', e);
-      }
-    }
-
-    // Fallback: ZXing
-    if (!decodedText && typeof ZXing !== 'undefined') {
-      try {
-        const lum = new ZXing.RGBLuminanceSource(imgData.data, canvas.width, canvas.height);
-        const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
-        const result = new ZXing.QRCodeReader().decode(bmp);
-        if (result && result.text && result.text.trim()) {
-          decodedText = result.text.trim();
-        }
-      } catch(e) {
-        console.warn('ZXing image upload decode error:', e);
-      }
-    }
+    const decodedText = await detectQRInImage(imgEl);
 
     if (decodedText) {
-      showToast('QR code decoded successfully!', 'success');
+      if (statusEl) statusEl.textContent = '✅ QR Code successfully decoded!';
+      showToast('QR code detected in photo!', 'success');
       startAnalysis(decodedText);
     } else {
-      showToast('No readable QR code found in this image. Ensure clear focus and lighting.', 'error');
+      if (statusEl) statusEl.textContent = '⚠️ Could not isolate a QR code. Try cropping closer.';
+      showToast('No readable QR code found. Ensure the QR code pattern is visible.', 'error');
     }
   } catch(e) {
-    showToast('Failed to decode image: ' + (e.message || 'Unknown error'), 'error');
+    showToast('Image processing error: ' + (e.message || 'Unknown error'), 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Inspect QR Image';
+    }
   }
 }
 
@@ -2377,6 +2522,10 @@ function resetScanner() {
   document.getElementById('url-input').value = '';
   document.getElementById('upload-preview').style.display = 'none';
   document.getElementById('detected-url-bar').style.display = 'none';
+  const statusEl = document.getElementById('upload-status');
+  if (statusEl) statusEl.textContent = '';
+  const fileInput = document.getElementById('file-input');
+  if (fileInput) fileInput.value = '';
   currentUrl = '';
   analysisData = null;
   uploadedFile = null;
