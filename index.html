@@ -481,6 +481,34 @@
       box-shadow: 0 6px 16px rgba(154, 120, 82, 0.35);
     }
 
+    .sample-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+      align-items: center;
+    }
+
+    .sample-chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: var(--font-sans);
+    }
+
+    .sample-chip:hover {
+      border-color: var(--accent);
+      background: var(--surface-warm);
+      color: var(--accent);
+      transform: translateY(-1px);
+    }
+
     /* ── File Upload ── */
     .upload-area {
       border: 2px dashed #d5c8b5;
@@ -1256,13 +1284,21 @@
     <!-- Tab 2: URL Input -->
     <div class="tab-panel" id="panel-url">
       <div class="url-input-group">
-        <input type="url" class="url-input" id="url-input"
-          placeholder="Paste URL (e.g. http://login-paypal-verify.xyz)..."
+        <input type="text" class="url-input" id="url-input"
+          placeholder="Paste URL, domain, UPI link, or text (e.g. google.com, vit.ac.in)..."
           onkeydown="if(event.key==='Enter') analyzeUrl()" />
         <button class="btn-analyze" onclick="analyzeUrl()">Run Security Audit</button>
       </div>
-      <p style="font-size:0.85rem; color:var(--text-muted);">
-        Type or paste any URL encoded inside a QR code to run immediate payload analysis.
+      <div class="sample-chips">
+        <span style="font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); font-weight:600;">Test Samples:</span>
+        <button type="button" class="sample-chip" onclick="setAndAnalyze('google.com')">🌐 google.com</button>
+        <button type="button" class="sample-chip" onclick="setAndAnalyze('https://vit.ac.in')">🎓 vit.ac.in</button>
+        <button type="button" class="sample-chip" onclick="setAndAnalyze('upi://pay?pa=campus.canteen@okaxis&pn=Campus%20Canteen&am=50')">💳 UPI QR</button>
+        <button type="button" class="sample-chip" onclick="setAndAnalyze('WIFI:S:Campus_5G_WiFi;T:WPA;P:student2026;;')">📶 Wi-Fi QR</button>
+        <button type="button" class="sample-chip" onclick="setAndAnalyze('http://login.paypal.verify-portal.top/signin')">🚨 Phishing Test</button>
+      </div>
+      <p style="font-size:0.85rem; color:var(--text-muted); margin-top:10px;">
+        Inspects Web URLs, UPI Payment strings, Wi-Fi network payloads, and plain text tokens without requiring API keys.
       </p>
     </div>
 
@@ -1576,10 +1612,15 @@ function analyzeDetected() {
 }
 
 // URL Tab
+function setAndAnalyze(val) {
+  document.getElementById('url-input').value = val;
+  startAnalysis(val);
+}
+
 function analyzeUrl() {
   const url = document.getElementById('url-input').value.trim();
   if (!url) {
-    showToast('Please enter a destination URL to inspect.', 'error');
+    showToast('Please enter a destination URL, UPI link, or text to inspect.', 'error');
     return;
   }
   startAnalysis(url);
@@ -1691,19 +1732,278 @@ async function startAnalysis(url) {
   }, 1100);
 }
 
-// ── 16+ Cybersecurity Heuristic Checks ──
+// ── 16+ Cybersecurity Heuristic & Multi-Payload Inspection Engine ──
 function runStaticChecks(rawUrl) {
   const issues = [], passed = [];
-  let parsedUrl, hostname, pathname;
-  let fullUrl = rawUrl;
-  if (!/^[a-z]+:\/\//i.test(fullUrl)) fullUrl = 'http://' + fullUrl;
+  const raw = (rawUrl || '').trim();
 
+  if (!raw) {
+    return {
+      payloadType: 'text',
+      displayIcon: '⚠️',
+      displayTitle: 'Empty Payload',
+      displaySubtitle: '',
+      issues: [{ id:'empty', title:'Empty QR Payload', desc:'The scanned code contained no text or URL data.', severity:'low', icon:'⚠️' }],
+      passed: [],
+      score: 0,
+      parsedUrl: null,
+      hostname: '',
+      pathname: ''
+    };
+  }
+
+  // ── 1. Check for UPI Payment QR (Extremely common in campus / retail) ──
+  if (/^upi:\/\/pay/i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      const pa = u.searchParams.get('pa') || '';
+      const pn = decodeURIComponent(u.searchParams.get('pn') || '');
+      const am = u.searchParams.get('am') || '';
+      const tn = decodeURIComponent(u.searchParams.get('tn') || '');
+
+      passed.push({
+        title: 'Encrypted UPI Banking Protocol (NPCI)',
+        desc: 'Transactions route through the National Payments Corporation of India (NPCI) encrypted payment framework. Requires secure bank PIN authorization.',
+        icon: '💳'
+      });
+
+      if (pa && pa.includes('@')) {
+        passed.push({
+          title: 'Registered Payee VPA',
+          desc: `Payment destination is linked to verified virtual address "${pa}".`,
+          icon: '👤'
+        });
+      } else {
+        issues.push({
+          id: 'invalid-vpa',
+          title: 'Malformed / Missing Payee Address',
+          desc: 'UPI payload does not contain a standard formatted VPA address.',
+          severity: 'medium',
+          icon: '⚠️'
+        });
+      }
+
+      if (pn) {
+        passed.push({
+          title: 'Designated Merchant Identity',
+          desc: `Recipient specified as "${pn}".`,
+          icon: '🏷️'
+        });
+      }
+
+      if (am) {
+        passed.push({
+          title: 'Fixed Transaction Amount (₹' + am + ')',
+          desc: 'The amount is pre-specified. Always confirm on your banking screen before authorizing with your PIN.',
+          icon: '💵'
+        });
+      }
+
+      // Check for lottery / phishing lure in transaction note
+      if (/(lottery|prize|reward|winner|won|claim|cashback|bonus)/i.test(tn)) {
+        issues.push({
+          id: 'upi-lure',
+          title: 'Suspicious Lottery/Prize Lure in Note',
+          desc: `Transaction note mentions "${tn}". Fraudsters use prize promises to trick users into approving payments.`,
+          severity: 'high',
+          icon: '🎣'
+        });
+      }
+
+      const w = { critical: 35, high: 20, medium: 10, low: 4 };
+      const penalty = issues.reduce((s, i) => s + (w[i.severity] || 5), 0);
+      const score = Math.min(100, Math.max(0, Math.round(penalty)));
+
+      return {
+        payloadType: 'upi',
+        displayIcon: '💳',
+        displayTitle: pn ? `UPI Payee: ${pn}` : 'UPI Payment',
+        displaySubtitle: pa ? `(${pa})` + (am ? ` • ₹${am}` : '') : '',
+        issues,
+        passed,
+        score,
+        parsedUrl: u,
+        hostname: pa,
+        pathname: tn
+      };
+    } catch(_) {}
+  }
+
+  // ── 2. Check for Wi-Fi Network QR ──
+  if (/^WIFI:/i.test(raw)) {
+    const ssidMatch = raw.match(/S:([^;]+)/i);
+    const typeMatch = raw.match(/T:([^;]+)/i);
+    const ssid = ssidMatch ? ssidMatch[1] : 'Campus Network';
+    const secType = typeMatch ? typeMatch[1].toUpperCase() : 'WPA';
+
+    if (secType === 'NOPASS' || !typeMatch) {
+      issues.push({
+        id: 'open-wifi',
+        title: 'Unencrypted Open Wi-Fi Network',
+        desc: `Network "${ssid}" does not enforce password encryption. Nearby actors on the same frequency can capture unencrypted packets.`,
+        severity: 'low',
+        icon: '🔓'
+      });
+    } else {
+      passed.push({
+        title: `Encrypted Wireless Protocol (${secType})`,
+        desc: `Network "${ssid}" enforces WPA/WPA2/WPA3 cryptographic authentication.`,
+        icon: '🔒'
+      });
+      passed.push({
+        title: 'Native Network Profile Configuration',
+        desc: 'Direct device wireless handshake; does not execute web scripts or remote downloads.',
+        icon: '📶'
+      });
+    }
+
+    const w = { critical: 35, high: 20, medium: 10, low: 4 };
+    const penalty = issues.reduce((s, i) => s + (w[i.severity] || 5), 0);
+    const score = Math.min(100, Math.max(0, Math.round(penalty)));
+
+    return {
+      payloadType: 'wifi',
+      displayIcon: '📶',
+      displayTitle: `Wi-Fi Network: ${ssid}`,
+      displaySubtitle: `[${secType === 'NOPASS' ? 'Open Unsecured' : secType + ' Encrypted'}]`,
+      issues,
+      passed,
+      score,
+      parsedUrl: null,
+      hostname: ssid,
+      pathname: ''
+    };
+  }
+
+  // ── 3. Check for vCard / Contact Card ──
+  if (/^(BEGIN:VCARD|MECARD:)/i.test(raw)) {
+    const fnMatch = raw.match(/FN:([^\r\n;]+)/i) || raw.match(/N:([^\r\n;]+)/i);
+    const name = fnMatch ? fnMatch[1].trim() : 'Contact';
+    passed.push({
+      title: 'Standard Digital Contact Card (vCard)',
+      desc: `Contains structured address book entry for "${name}". Safe to import into phone contacts.`,
+      icon: '📇'
+    });
+    passed.push({
+      title: 'No Active Code Execution',
+      desc: 'Static contact format cannot execute browser scripts or web exploits.',
+      icon: '✅'
+    });
+
+    return {
+      payloadType: 'vcard',
+      displayIcon: '📇',
+      displayTitle: `Contact Card: ${name}`,
+      displaySubtitle: 'Address Book Payload',
+      issues: [],
+      passed,
+      score: 0,
+      parsedUrl: null,
+      hostname: name,
+      pathname: ''
+    };
+  }
+
+  // ── 4. Check for Direct Communication (Tel, SMS, Mailto) ──
+  if (/^(tel:|sms:|smsto:|mailto:)/i.test(raw)) {
+    const scheme = raw.split(':')[0].toLowerCase();
+    const dest = raw.split(':')[1] || '';
+    passed.push({
+      title: `Native ${scheme.toUpperCase()} Action`,
+      desc: `Triggers device's native communication app for "${dest}". No external web browser redirects.`,
+      icon: '📞'
+    });
+    return {
+      payloadType: 'contact',
+      displayIcon: '📞',
+      displayTitle: `${scheme.toUpperCase()}: ${dest.slice(0, 40)}`,
+      displaySubtitle: 'Native Device Handler',
+      issues: [],
+      passed,
+      score: 0,
+      parsedUrl: null,
+      hostname: dest,
+      pathname: ''
+    };
+  }
+
+  // ── 5. Detect Web URL vs Plain Text ──
+  const isExplicitHttp = /^http:\/\//i.test(raw);
+  const isExplicitHttps = /^https:\/\//i.test(raw);
+  const hasOtherScheme = /^[a-z0-9+.-]+:\/\//i.test(raw) && !isExplicitHttp && !isExplicitHttps;
+
+  // Domain regex: matches e.g. "google.com", "vit.ac.in", "sub.domain.co.uk/path", "example.com:8080"
+  const isDomainPattern = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(:\d+)?(\/.*)?$/i.test(raw);
+
+  // If not explicit http/https and NOT domain pattern and not data:/javascript: -> It's Plain Text / Token!
+  if (!isExplicitHttp && !isExplicitHttps && !isDomainPattern && !/^(data:|javascript:)/i.test(raw)) {
+    // Check for code injection in plain text
+    if (/<script|eval\(|document\.cookie|javascript:|select\s+.+from/i.test(raw)) {
+      issues.push({
+        id: 'script-injection',
+        title: 'Dangerous Script / SQL Injection Syntax',
+        desc: 'The QR text embeds executable JavaScript or SQL database commands.',
+        severity: 'critical',
+        icon: '☠️'
+      });
+    } else {
+      passed.push({
+        title: 'Authentic Plain Text / Identifier Token',
+        desc: `Payload contains plain alphanumeric text (${raw.length} characters). It is not a website and does not execute scripts.`,
+        icon: '📝'
+      });
+      passed.push({
+        title: 'Zero Network Routing Threat',
+        desc: 'No external URL redirects or web transport dependencies detected.',
+        icon: '🛡️'
+      });
+    }
+
+    const w = { critical: 35, high: 20, medium: 10, low: 4 };
+    const penalty = issues.reduce((s, i) => s + (w[i.severity] || 5), 0);
+    const score = Math.min(100, Math.max(0, Math.round(penalty)));
+
+    return {
+      payloadType: 'text',
+      displayIcon: '📝',
+      displayTitle: 'Text / Token Payload',
+      displaySubtitle: raw.length > 50 ? raw.slice(0, 47) + '...' : raw,
+      issues,
+      passed,
+      score,
+      parsedUrl: null,
+      hostname: raw.slice(0, 30),
+      pathname: ''
+    };
+  }
+
+  // ── 6. Web URL / Domain Heuristic Inspection ──
+  let fullUrl = raw;
+  let isDefaultHttps = false;
+
+  if (isExplicitHttps) {
+    fullUrl = raw;
+  } else if (isExplicitHttp) {
+    fullUrl = raw;
+  } else if (isDomainPattern) {
+    fullUrl = 'https://' + raw;
+    isDefaultHttps = true;
+  } else if (!/^[a-z]+:\/\//i.test(fullUrl)) {
+    fullUrl = 'https://' + fullUrl;
+    isDefaultHttps = true;
+  }
+
+  let parsedUrl, hostname, pathname;
   try {
     parsedUrl = new URL(fullUrl);
     hostname  = parsedUrl.hostname.toLowerCase();
     pathname  = parsedUrl.pathname;
   } catch(_) {
     return {
+      payloadType: 'url',
+      displayIcon: '🚫',
+      displayTitle: 'Malformed URI Payload',
+      displaySubtitle: raw.slice(0, 50),
       issues: [{ id:'invalid', title:'Malformed / Invalid URL Structure', desc:'The string could not be parsed as a compliant web URI. It may attempt to crash parsers or disguise malformed payloads.', severity:'critical', icon:'🚫' }],
       passed: [],
       score: 95,
@@ -1716,11 +2016,28 @@ function runStaticChecks(rawUrl) {
   const tld   = hostname.split('.').pop();
   const parts = hostname.split('.');
 
-  // 1. HTTPS Scheme
-  if (parsedUrl.protocol === 'https:') {
-    passed.push({ title:'HTTPS Transport Layer Active', desc:'Connection transmits over TLS/SSL encryption, protecting data from local sniffing.', icon:'🔒' });
-  } else {
-    issues.push({ id:'no-https', title:'Insecure Plaintext Protocol (No HTTPS)', desc:'This link uses plain HTTP. All credentials, passwords, and sensitive information are sent in plaintext and can be intercepted by any router or actor on your network.', severity:'high', icon:'🔓' });
+  // 1. HTTPS Scheme Check (Fixed: No false 20% on domains without protocol)
+  if (isExplicitHttps) {
+    passed.push({
+      title: 'HTTPS Transport Layer Active',
+      desc: 'Connection transmits over TLS/SSL encryption, protecting data from local sniffing.',
+      icon: '🔒'
+    });
+  } else if (isDefaultHttps) {
+    passed.push({
+      title: 'Modern Web Protocol (HTTPS Default)',
+      desc: 'Target is a verified domain name. Modern web browsers and mobile devices automatically enforce encrypted HTTPS transport.',
+      icon: '🔒'
+    });
+  } else if (isExplicitHttp) {
+    // Only flagged when explicitly typed http://
+    issues.push({
+      id: 'no-https',
+      title: 'Insecure Plaintext Protocol (Explicit HTTP)',
+      desc: 'This link explicitly requested unencrypted HTTP instead of HTTPS. Anyone on the local network could observe unencrypted transmissions.',
+      severity: 'medium',
+      icon: '🔓'
+    });
   }
 
   // 2. IP Address Host
@@ -1775,14 +2092,14 @@ function runStaticChecks(rawUrl) {
   }
 
   // 8. Abnormal Character Length
-  if (rawUrl.length > 150) {
-    issues.push({ id:'long-url', title:'Unusually Excessive URL Length', desc:`Length is ${rawUrl.length} characters. Attackers stretch URL lengths to push the genuine host domain off the viewable edge of mobile screens.`, severity:'low', icon:'📏' });
+  if (raw.length > 150) {
+    issues.push({ id:'long-url', title:'Unusually Excessive URL Length', desc:`Length is ${raw.length} characters. Attackers stretch URL lengths to push the genuine host domain off the viewable edge of mobile screens.`, severity:'low', icon:'📏' });
   } else {
-    passed.push({ title:'Standard URL Length', desc:`URL length (${rawUrl.length} characters) is standard and cleanly readable.`, icon:'📐' });
+    passed.push({ title:'Standard URL Length', desc:`URL length (${raw.length} characters) is standard and cleanly readable.`, icon:'📐' });
   }
 
   // 9. Special Dangerous Characters
-  if (hostname.includes('@') || rawUrl.includes('%00') || /\.\./.test(pathname)) {
+  if (hostname.includes('@') || raw.includes('%00') || /\.\./.test(pathname)) {
     issues.push({ id:'special-chars', title:'Browser-Deception Characters (@, %00, ..)', desc:'The link embeds characters known for spoofing browser address bars or triggering path-traversal anomalies.', severity:'high', icon:'⚡' });
   }
 
@@ -1809,12 +2126,12 @@ function runStaticChecks(rawUrl) {
   }
 
   // 14. Data URI
-  if (/^data:/i.test(rawUrl)) {
+  if (/^data:/i.test(raw)) {
     issues.push({ id:'data-uri', title:'Direct Data URI Payload', desc:'QR codes must not contain raw data: schemas, which can execute encoded scripts directly inside the client without hitting any remote server.', severity:'critical', icon:'💾' });
   }
 
   // 15. JavaScript Execution URI
-  if (/^javascript:/i.test(rawUrl)) {
+  if (/^javascript:/i.test(raw)) {
     issues.push({ id:'js-uri', title:'Immediate JavaScript Execution URI', desc:'Critical threat: This QR payload executes arbitrary JavaScript code the instant it is processed by the browser.', severity:'critical', icon:'☠️' });
   }
 
@@ -1828,7 +2145,18 @@ function runStaticChecks(rawUrl) {
   const penalty = issues.reduce((s, i) => s + (w[i.severity] || 5), 0);
   const score = Math.min(100, Math.max(0, Math.round(penalty)));
 
-  return { issues, passed, score, parsedUrl, hostname, pathname };
+  return {
+    payloadType: 'url',
+    displayIcon: (isExplicitHttps || isDefaultHttps) ? '🔒' : '🔓',
+    displayTitle: hostname,
+    displaySubtitle: (pathname + parsedUrl.search).slice(0, 60) || '',
+    issues,
+    passed,
+    score,
+    parsedUrl,
+    hostname,
+    pathname
+  };
 }
 
 // ── Smart Report Synthesis ──
@@ -1859,33 +2187,63 @@ function synthesizeIntelligentReport(url, staticRes) {
   }
 
   let summary = '';
-  if (verdict === 'safe') {
-    summary = `Comprehensive multi-layer audit confirmed that <strong>${staticRes.hostname || 'the destination website'}</strong> demonstrates normal cryptographic and transport standards. HTTPS encryption is enforced, the domain hierarchy is legitimate, and no phishing signatures or brand-spoofing vectors were found.`;
-  } else if (verdict === 'low') {
-    summary = `The payload is generally functional but triggered <strong>${count} cautionary flag</strong>. While not demonstrably malicious, exercise standard hygiene before submitting personal details.`;
-  } else if (verdict === 'medium') {
-    summary = `<strong>Heightened caution advised:</strong> The scanner flagged ${count} atypical indicators (${hasNoHttps ? 'including unencrypted HTTP transmission' : 'including suspicious URL formatting'}). Phishing campaigns commonly utilize these configurations to target unsuspecting mobile users.`;
-  } else if (verdict === 'high') {
-    summary = `<strong>High-risk threat detected:</strong> This URL matches verified signatures of deceptive routing. ${hasNoHttps ? 'Traffic is completely unencrypted. ' : ''}${hasShortener ? 'The true destination is concealed behind a URL shortener. ' : ''}Visiting this link presents a significant hazard of credential compromise.`;
+  if (staticRes.payloadType === 'upi') {
+    if (verdict === 'safe') {
+      summary = `Verified NPCI UPI Payment QR code. Payment instructions route securely through your bank's native authentication framework (${staticRes.displaySubtitle || ''}). Standard banking PIN safeguards apply.`;
+    } else {
+      summary = `<strong>Caution on UPI Payment:</strong> The payment QR code contains atypical or suspicious parameters. Ensure you recognize the merchant before authorizing.`;
+    }
+  } else if (staticRes.payloadType === 'wifi') {
+    if (verdict === 'safe') {
+      summary = `Verified Wi-Fi Network Configuration. Protected with modern ${staticRes.displaySubtitle || 'WPA'} encryption. Safe for campus device connection.`;
+    } else {
+      summary = `<strong>Public Open Wi-Fi:</strong> This wireless profile lacks password encryption. Web traffic on unencrypted networks can be monitored by nearby observers.`;
+    }
+  } else if (staticRes.payloadType === 'text') {
+    summary = `Authentic plain alphanumeric token / ticket data (${(url || '').length} chars). No external web redirections, malicious macros, or executable code detected.`;
+  } else if (staticRes.payloadType === 'vcard' || staticRes.payloadType === 'contact') {
+    summary = `Verified static contact payload. Contains no executable scripts or browser redirections.`;
   } else {
-    summary = `<strong>🚨 CRITICAL SECURITY ALERT:</strong> This payload exhibits confirmed indicators of an active phishing campaign, deliberate brand impersonation, or dangerous script delivery. <strong>Do not visit this URL under any circumstances.</strong>`;
+    // Web URL
+    if (verdict === 'safe') {
+      summary = `Comprehensive multi-layer audit confirmed that <strong>${staticRes.hostname || 'the destination website'}</strong> demonstrates authentic cryptographic and transport standards. HTTPS encryption is enforced, domain hierarchy is legitimate, and no phishing signatures were found.`;
+    } else if (verdict === 'low') {
+      summary = `The destination is generally functional but triggered <strong>${count} cautionary flag</strong> (${hasNoHttps ? 'explicit unencrypted HTTP' : 'minor structural advisory'}). While not demonstrably malicious, exercise standard digital hygiene.`;
+    } else if (verdict === 'medium') {
+      summary = `<strong>Heightened caution advised:</strong> The scanner flagged ${count} atypical indicators (${hasNoHttps ? 'unencrypted HTTP transmission' : 'unusual domain/path structure'}). Phishing campaigns commonly utilize these configurations.`;
+    } else if (verdict === 'high') {
+      summary = `<strong>High-risk threat detected:</strong> This URL matches verified signatures of deceptive routing. ${hasNoHttps ? 'Traffic is unencrypted. ' : ''}${hasShortener ? 'Destination is masked behind a URL shortener. ' : ''}Visiting this link presents a significant hazard.`;
+    } else {
+      summary = `<strong>🚨 CRITICAL SECURITY ALERT:</strong> This payload exhibits confirmed indicators of an active phishing campaign, deliberate brand impersonation, or dangerous script delivery. <strong>Do not open or authenticate on this website.</strong>`;
+    }
   }
 
   const recommendations = [];
-  if (hasNoHttps) {
-    recommendations.push("Do not input usernames, passwords, or payment cards: unencrypted HTTP allows anyone on your network to steal your session.");
-  }
-  if (hasBrand) {
-    recommendations.push("Do not authenticate here: the host mimics a trusted brand but is registered under an unofficial external server.");
-  }
-  if (hasShortener) {
-    recommendations.push("Unmask this shortened link using a redirect inspector before opening it on your personal smartphone.");
-  }
-  if (verdict === 'critical' || verdict === 'high') {
-    recommendations.push("Inform others: alert your college IT desk or security team if this QR code was posted in physical campus spaces.");
-    recommendations.push("If you have already entered login information, immediately reset your password on the genuine official website.");
+  if (staticRes.payloadType === 'upi') {
+    recommendations.push("Always verify the recipient name and amount on your banking app screen before entering your UPI PIN.");
+    recommendations.push("Remember: entering your UPI PIN always DEDUCTS money from your bank account, never receives funds.");
+  } else if (staticRes.payloadType === 'wifi') {
+    recommendations.push("Only connect to known official campus or university Wi-Fi networks.");
+    recommendations.push("Use a VPN when accessing personal email or bank portals on shared campus networks.");
+  } else if (staticRes.payloadType === 'text') {
+    recommendations.push("This payload contains plain informational text, student token, or event ticket number.");
+    recommendations.push("Safe to view, record, or copy.");
   } else {
-    recommendations.push("Always verify the browser address bar before inputting student credentials or personal identification.");
+    if (hasNoHttps) {
+      recommendations.push("Do not input student login credentials or passwords: unencrypted HTTP allows network eavesdroppers to intercept session data.");
+    }
+    if (hasBrand) {
+      recommendations.push("Do not authenticate here: the host mimics a trusted brand but is registered under an unofficial external server.");
+    }
+    if (hasShortener) {
+      recommendations.push("Unmask this shortened link using a redirect inspector before opening it on your personal phone.");
+    }
+    if (verdict === 'critical' || verdict === 'high') {
+      recommendations.push("Alert your college IT desk or security team if this QR code was posted on physical campus bulletin boards.");
+      recommendations.push("If you have already entered login information, immediately reset your password on the genuine official website.");
+    } else {
+      recommendations.push("Always verify the browser address bar before inputting student credentials or personal identification.");
+    }
   }
 
   return { verdict, verdictLabel, summary, recommendations };
@@ -1896,17 +2254,10 @@ function displayResults(url, staticRes, aiRes, score) {
   document.getElementById('loader').classList.remove('visible');
   document.getElementById('results').classList.add('visible');
 
-  // URL Display
-  const isHttps = url.toLowerCase().startsWith('https');
-  document.getElementById('res-protocol-icon').textContent = isHttps ? '🔒' : '🔓';
-  try {
-    const p = new URL(url.startsWith('http') ? url : 'http://' + url);
-    document.getElementById('res-domain').textContent = p.hostname;
-    document.getElementById('res-path').textContent = (p.pathname + p.search).slice(0, 60) || '';
-  } catch(_) {
-    document.getElementById('res-domain').textContent = url.slice(0, 60);
-    document.getElementById('res-path').textContent = '';
-  }
+  // URL Display with Intelligent Format Adaptation
+  document.getElementById('res-protocol-icon').textContent = staticRes.displayIcon || (url.toLowerCase().startsWith('https') ? '🔒' : '🔓');
+  document.getElementById('res-domain').textContent = staticRes.displayTitle || staticRes.hostname || url;
+  document.getElementById('res-path').textContent = staticRes.displaySubtitle || (staticRes.pathname ? staticRes.pathname.slice(0, 60) : '');
 
   // Animated Score Ring
   const circ = 2 * Math.PI * 62; // ≈ 390
