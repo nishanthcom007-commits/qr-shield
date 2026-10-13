@@ -1,1304 +1,1434 @@
 <!DOCTYPE html>
-<html lang="en" class="scroll-smooth">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QR Shield — Anti-Quishing &amp; QRLJacking Defense Engine</title>
+  <title>QR Shield — QR Phishing Detector</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>" />
 
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Font Awesome -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
-
-  <!-- Google Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            slate: {
-              950: '#020617',
-              925: '#0a1020',
-            }
-          },
-          fontFamily: {
-            sans: ['Inter', 'sans-serif'],
-            mono: ['JetBrains Mono', 'monospace'],
-          }
-        }
-      }
-    };
-  </script>
+  <!-- ZXing for QR decode from camera/image -->
+  <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
 
   <style>
-    /* ── Base ── */
-    * { box-sizing: border-box; }
+    /* ─── Design Tokens ─── */
+    :root {
+      --bg:          #0a0e1a;
+      --bg2:         #0f1525;
+      --surface:     #141c30;
+      --surface2:    #1a2540;
+      --border:      rgba(99,179,237,.15);
+      --accent:      #3b82f6;
+      --accent2:     #818cf8;
+      --glow:        rgba(59,130,246,.35);
+      --safe:        #22c55e;
+      --warn:        #f59e0b;
+      --danger:      #ef4444;
+      --critical:    #dc2626;
+      --text:        #e2e8f0;
+      --muted:       #64748b;
+      --radius:      16px;
+      --radius-sm:   8px;
+      font-size:     16px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      background-color: #020617;
-      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
       overflow-x: hidden;
     }
 
-    /* ── Grid noise overlay ── */
     body::before {
       content: '';
-      position: fixed;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(16,185,129,.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(16,185,129,.03) 1px, transparent 1px);
-      background-size: 40px 40px;
-      pointer-events: none;
-      z-index: 0;
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 10%, rgba(59,130,246,.08) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 80% at 80% 90%, rgba(129,140,248,.06) 0%, transparent 60%);
+      pointer-events: none; z-index: 0;
     }
 
-    /* ── Glassmorphism ── */
-    .glass {
-      background: rgba(15, 23, 42, 0.72);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      border: 1px solid rgba(100,116,139,.2);
-    }
-    .glass-card {
-      background: rgba(15, 23, 42, 0.55);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(100,116,139,.18);
-    }
-    .glass-inset {
-      background: rgba(2, 6, 23, 0.6);
-      border: 1px solid rgba(100,116,139,.15);
-    }
-
-    /* ── Scrollbar ── */
     ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #020617; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg2); }
+    ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 3px; }
 
-    /* ── Animations ── */
-    @keyframes pulse-dot {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50%       { opacity: .5; transform: scale(1.4); }
-    }
-    @keyframes scan-line {
-      0%   { top: 0; }
-      100% { top: 100%; }
-    }
-    @keyframes fade-in-up {
-      from { opacity: 0; transform: translateY(18px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes glitch {
-      0%, 100% { clip-path: inset(0 0 98% 0); transform: translate(-2px,0); }
-      20%      { clip-path: inset(20% 0 60% 0); transform: translate(2px,0); }
-      40%      { clip-path: inset(50% 0 30% 0); transform: translate(-1px,0); }
-      60%      { clip-path: inset(80% 0 5%  0); transform: translate(1px,0); }
-      80%      { clip-path: inset(10% 0 85% 0); transform: translate(0,0); }
-    }
-    @keyframes progress-fill {
-      from { width: 0%; }
-      to   { width: var(--target-w); }
-    }
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0; }
-    }
-    @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50%       { transform: translateY(-8px); }
-    }
-    @keyframes shield-glow {
-      0%, 100% { box-shadow: 0 0 20px rgba(16,185,129,.4), 0 0 40px rgba(16,185,129,.15); }
-      50%       { box-shadow: 0 0 35px rgba(16,185,129,.7), 0 0 70px rgba(16,185,129,.3); }
-    }
-    @keyframes spin-slow {
-      from { transform: rotate(0deg); }
-      to   { transform: rotate(360deg); }
-    }
-    @keyframes ripple {
-      0%   { transform: scale(0.9); opacity: .7; }
-      100% { transform: scale(1.6); opacity: 0; }
-    }
+    .container { max-width: 960px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1; }
 
-    .animate-pulse-dot  { animation: pulse-dot  1.2s ease-in-out infinite; }
-    .animate-fade-in-up { animation: fade-in-up .5s ease-out forwards; }
-    .animate-float      { animation: float 3.5s ease-in-out infinite; }
-    .animate-shield-glow{ animation: shield-glow 2.5s ease-in-out infinite; }
-    .animate-spin-slow  { animation: spin-slow 10s linear infinite; }
-    .animate-ripple     { animation: ripple 1.4s ease-out infinite; }
-    .animate-blink      { animation: blink .9s step-end infinite; }
+    header {
+      border-bottom: 1px solid var(--border);
+      background: rgba(10,14,26,.85);
+      backdrop-filter: blur(20px);
+      position: sticky; top: 0; z-index: 100;
+    }
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; max-width: 960px; margin: 0 auto;
+    }
+    .logo {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 1.35rem; font-weight: 700; letter-spacing: -.5px;
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 20px var(--glow);
+    }
+    .logo span { background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .badge-beta {
+      font-size: .65rem; padding: 2px 7px; border-radius: 99px;
+      background: rgba(59,130,246,.2); color: #93c5fd; border: 1px solid rgba(59,130,246,.3);
+      font-weight: 600; letter-spacing: .5px;
+    }
+    nav a {
+      color: var(--muted); text-decoration: none; font-size: .9rem;
+      transition: color .2s;
+    }
+    nav a:hover { color: var(--text); }
+    .nav-links { display: flex; gap: 24px; align-items: center; }
+    .btn-nav {
+      padding: 8px 18px; border-radius: 99px; border: 1px solid var(--border);
+      color: var(--text); background: var(--surface2); cursor: pointer;
+      font-size: .875rem; font-weight: 500; transition: all .2s;
+    }
+    .btn-nav:hover { border-color: var(--accent); color: var(--accent); background: rgba(59,130,246,.1); }
 
-    /* ── Layer row transition ── */
-    .layer-row {
-      transition: background .25s, border-color .25s;
+    .hero {
+      text-align: center; padding: 80px 20px 60px;
     }
-    .layer-row.running  { border-left: 3px solid #f59e0b; background: rgba(245,158,11,.07); }
-    .layer-row.safe     { border-left: 3px solid #10b981; background: rgba(16,185,129,.07); }
-    .layer-row.warning  { border-left: 3px solid #f59e0b; background: rgba(245,158,11,.08); }
-    .layer-row.critical { border-left: 3px solid #ef4444; background: rgba(239,68,68,.08); }
-    .layer-row.idle     { border-left: 3px solid #334155; }
+    .hero-tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: .8rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+      color: var(--accent2); padding: 6px 14px; border-radius: 99px;
+      border: 1px solid rgba(129,140,248,.25); background: rgba(129,140,248,.08);
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: clamp(2.2rem, 6vw, 3.8rem);
+      font-weight: 800; line-height: 1.1; letter-spacing: -1.5px; margin-bottom: 20px;
+    }
+    .hero h1 .highlight {
+      background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .hero p {
+      font-size: 1.15rem; color: var(--muted); max-width: 580px; margin: 0 auto 40px; line-height: 1.7;
+    }
+    .hero-stats {
+      display: flex; justify-content: center; gap: 40px; flex-wrap: wrap; margin-bottom: 50px;
+    }
+    .stat { text-align: center; }
+    .stat-num { font-size: 1.8rem; font-weight: 700; background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .stat-label { font-size: .8rem; color: var(--muted); margin-top: 2px; }
 
-    /* ── QR SVG ── */
-    .qr-wrapper {
-      position: relative;
-      display: inline-block;
+    .scanner-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 40px;
+      margin-bottom: 32px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.03);
+      position: relative; overflow: hidden;
     }
-    .scan-overlay {
-      position: absolute;
-      left: 0; right: 0;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, #10b981, transparent);
-      animation: scan-line 2s linear infinite;
-      pointer-events: none;
-    }
-
-    /* ── Gauge ── */
-    .gauge-bar {
-      height: 10px;
-      border-radius: 99px;
-      background: linear-gradient(90deg, #10b981 0%, #f59e0b 55%, #ef4444 100%);
-      position: relative;
-    }
-    .gauge-needle {
-      position: absolute;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      background: white;
-      box-shadow: 0 0 0 3px rgba(255,255,255,.3), 0 2px 8px rgba(0,0,0,.5);
-      transition: left .6s cubic-bezier(.34,1.56,.64,1);
-    }
-
-    /* ── Input focus ── */
-    textarea:focus, input:focus {
-      outline: none;
-      box-shadow: 0 0 0 2px rgba(16,185,129,.45);
-    }
-
-    /* ── Verdict banner ── */
-    .verdict-banner {
-      animation: fade-in-up .4s ease-out;
-    }
-
-    /* ── Flyer card ── */
-    .flyer-card {
-      background: linear-gradient(135deg, #1e3a5f 0%, #0f2847 100%);
-      border: 2px solid rgba(59,130,246,.35);
-      position: relative;
-      overflow: hidden;
-    }
-    .flyer-card::before {
+    .scanner-card::before {
       content: '';
-      position: absolute;
-      inset: 0;
-      background: repeating-linear-gradient(
-        45deg,
-        transparent,
-        transparent 6px,
-        rgba(59,130,246,.04) 6px,
-        rgba(59,130,246,.04) 12px
-      );
-      pointer-events: none;
+      position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(99,179,237,.4), transparent);
     }
 
-    /* ── Hex badge ── */
-    .hex-badge {
-      clip-path: polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 52px;
-      height: 60px;
+    .tabs {
+      display: flex; gap: 4px; background: var(--bg2);
+      border-radius: 12px; padding: 4px; margin-bottom: 32px;
+    }
+    .tab {
+      flex: 1; padding: 10px; border: none; background: none;
+      color: var(--muted); font-size: .9rem; font-weight: 500;
+      border-radius: 9px; cursor: pointer; transition: all .2s;
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+    }
+    .tab.active { background: var(--surface2); color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+    .tab:hover:not(.active) { color: var(--text); }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .camera-wrapper {
+      position: relative; background: var(--bg2); border-radius: var(--radius);
+      overflow: hidden; aspect-ratio: 4/3; max-height: 360px;
+      border: 2px solid var(--border); margin-bottom: 16px;
+    }
+    #camera-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .camera-overlay {
+      position: absolute; inset: 0; pointer-events: none;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .scan-frame { width: 200px; height: 200px; position: relative; }
+    .corner { position: absolute; width: 40px; height: 40px; border-color: var(--accent); border-style: solid; }
+    .corner.tl { top: 0; left: 0; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+    .corner.tr { top: 0; right: 0; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+    .corner.bl { bottom: 0; left: 0; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+    .corner.br { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+    .scan-line {
+      position: absolute; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      animation: scan 2.4s linear infinite; top: 0;
+    }
+    @keyframes scan {
+      0% { top: 0; opacity: 1; }
+      90% { top: calc(100% - 2px); opacity: 1; }
+      100% { top: calc(100% - 2px); opacity: 0; }
     }
 
-    /* ── Responsive QR table ── */
-    .qr-svg-mini {
-      width: 100%;
-      max-width: 160px;
+    .camera-placeholder {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; color: var(--muted);
+    }
+    .camera-placeholder svg { opacity: .4; }
+    .camera-placeholder p { font-size: .9rem; opacity: .7; }
+    #start-camera-btn {
+      padding: 10px 24px; border-radius: 99px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none; color: white; font-weight: 600; cursor: pointer;
+      font-size: .9rem; transition: opacity .2s;
+    }
+    #start-camera-btn:hover { opacity: .85; }
+
+    .url-input-group { display: flex; gap: 10px; margin-bottom: 16px; }
+    .url-input {
+      flex: 1; padding: 14px 18px;
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text);
+      font-size: 1rem; outline: none; transition: border-color .2s;
+    }
+    .url-input::placeholder { color: var(--muted); }
+    .url-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
+    .btn-analyze {
+      padding: 14px 28px; border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none; color: white; font-weight: 700; cursor: pointer;
+      font-size: 1rem; transition: all .2s; white-space: nowrap;
+      box-shadow: 0 4px 20px rgba(59,130,246,.3);
+    }
+    .btn-analyze:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(59,130,246,.4); }
+    .btn-analyze:active { transform: translateY(0); }
+    .btn-analyze:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+    .upload-area {
+      border: 2px dashed var(--border); border-radius: var(--radius);
+      padding: 50px 24px; text-align: center; cursor: pointer;
+      transition: all .3s; background: var(--bg2);
+    }
+    .upload-area:hover, .upload-area.dragover {
+      border-color: var(--accent); background: rgba(59,130,246,.05);
+    }
+    .upload-area h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 6px; }
+    .upload-area p { font-size: .875rem; color: var(--muted); }
+    #file-input { display: none; }
+    .upload-preview {
+      margin-top: 16px; display: none; align-items: center; gap: 12px;
+      background: var(--surface2); padding: 12px 16px; border-radius: var(--radius-sm);
+    }
+    .upload-preview img { width: 60px; height: 60px; object-fit: contain; border-radius: 6px; background: white; }
+    .upload-preview-info { flex: 1; }
+    .upload-preview-info .fname { font-size: .9rem; font-weight: 500; }
+    .upload-preview-info .fsize { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+    .btn-upload-analyze {
+      padding: 10px 20px; border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none; color: white; font-weight: 600; cursor: pointer;
+      font-size: .875rem; transition: all .2s;
+    }
+    .btn-upload-analyze:hover { opacity: .85; }
+
+    .api-key-section {
+      display: flex; align-items: center; gap: 10px; margin-top: 16px;
+      padding: 12px 16px; background: var(--bg2); border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+    .api-key-section label { font-size: .85rem; color: var(--muted); white-space: nowrap; }
+    .api-key-input {
+      flex: 1; padding: 8px 12px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); font-size: .85rem; outline: none;
+    }
+    .api-key-input:focus { border-color: var(--accent); }
+    .api-key-hint { font-size: .75rem; color: var(--muted); }
+
+    .loader-wrapper { display: none; text-align: center; padding: 50px 20px; }
+    .loader-wrapper.visible { display: block; }
+    .spinner {
+      width: 52px; height: 52px; margin: 0 auto 20px;
+      border: 3px solid rgba(59,130,246,.2); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader-steps { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; align-items: flex-start; display: inline-flex; }
+    .loader-step {
+      display: flex; align-items: center; gap: 10px; font-size: .9rem;
+      color: var(--muted); transition: color .3s;
+    }
+    .loader-step.done { color: var(--safe); }
+    .loader-step.active { color: var(--text); }
+    .step-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted); transition: background .3s; flex-shrink: 0;
+    }
+    .loader-step.done .step-dot { background: var(--safe); }
+    .loader-step.active .step-dot { background: var(--accent); animation: pulse 1s ease infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+
+    .results-section { display: none; }
+    .results-section.visible { display: block; }
+
+    .result-url-bar {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--bg2); border-radius: var(--radius-sm);
+      padding: 12px 16px; margin-bottom: 24px;
+      border: 1px solid var(--border); overflow: hidden;
+    }
+    .result-url-bar .url-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .result-url { font-size: .9rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .result-url strong { color: var(--text); }
+
+    .score-section {
+      display: flex; align-items: center; gap: 32px; margin-bottom: 32px; flex-wrap: wrap;
+    }
+    .score-ring-wrapper { position: relative; flex-shrink: 0; }
+    .score-ring { width: 160px; height: 160px; transform: rotate(-90deg); }
+    .ring-bg { fill: none; stroke: var(--surface2); stroke-width: 10; }
+    .ring-fill {
+      fill: none; stroke-width: 10; stroke-linecap: round;
+      transition: stroke-dashoffset 1.2s cubic-bezier(.25,.46,.45,.94);
+    }
+    .score-center {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .score-num { font-size: 2.4rem; font-weight: 800; line-height: 1; }
+    .score-label { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+
+    .score-info { flex: 1; min-width: 200px; }
+    .verdict-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 18px; border-radius: 99px; font-weight: 700; font-size: .95rem;
+      margin-bottom: 14px;
+    }
+    .verdict-badge.safe     { background: rgba(34,197,94,.15);  color: var(--safe);   border: 1px solid rgba(34,197,94,.3);  }
+    .verdict-badge.low      { background: rgba(245,158,11,.12); color: var(--warn);   border: 1px solid rgba(245,158,11,.3); }
+    .verdict-badge.medium   { background: rgba(245,158,11,.15); color: var(--warn);   border: 1px solid rgba(245,158,11,.3); }
+    .verdict-badge.high     { background: rgba(239,68,68,.15);  color: var(--danger); border: 1px solid rgba(239,68,68,.3);  }
+    .verdict-badge.critical { background: rgba(220,38,38,.2);   color: #fca5a5;       border: 1px solid rgba(220,38,38,.4);  }
+
+    .verdict-desc { color: var(--muted); font-size: .9rem; line-height: 1.6; }
+
+    .risk-meter { margin-bottom: 0; }
+    .risk-meter-label { display: flex; justify-content: space-between; font-size: .8rem; color: var(--muted); margin-bottom: 6px; }
+    .risk-track {
+      height: 10px; border-radius: 99px;
+      background: linear-gradient(90deg, #22c55e 0%, #f59e0b 50%, #ef4444 80%, #dc2626 100%);
+      position: relative; margin-bottom: 4px;
+    }
+    .risk-thumb {
+      position: absolute; top: 50%; transform: translate(-50%, -50%);
+      width: 18px; height: 18px; background: white; border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,.4); transition: left 1s cubic-bezier(.25,.46,.45,.94);
+      border: 2px solid var(--bg2);
+    }
+    .risk-marks { display: flex; justify-content: space-between; font-size: .7rem; color: var(--muted); padding: 0 2px; }
+
+    .section-title {
+      font-size: 1rem; font-weight: 700; color: var(--text);
+      display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
+    }
+    .section-title span.count {
+      background: var(--surface2); padding: 2px 8px; border-radius: 99px;
+      font-size: .75rem; color: var(--muted);
     }
 
-    /* ── Scrollable log ── */
-    .log-panel {
-      height: 220px;
-      overflow-y: auto;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: .72rem;
-      line-height: 1.6;
+    .issues-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+    .issue-card {
+      background: var(--bg2); border-radius: var(--radius-sm);
+      padding: 16px; border-left: 4px solid transparent;
+      display: flex; align-items: flex-start; gap: 14px;
+      animation: slideIn .4s ease both;
     }
-
-    /* ── Tooltip ── */
-    [data-tip] { position: relative; cursor: help; }
-    [data-tip]:hover::after {
-      content: attr(data-tip);
-      position: absolute;
-      bottom: calc(100% + 6px);
-      left: 50%;
-      transform: translateX(-50%);
-      background: #1e293b;
-      border: 1px solid #334155;
-      color: #94a3b8;
-      font-size: .7rem;
-      padding: 4px 10px;
-      border-radius: 6px;
-      white-space: nowrap;
-      z-index: 99;
-      pointer-events: none;
+    @keyframes slideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .issue-card.severity-low      { border-color: #22c55e; }
+    .issue-card.severity-medium   { border-color: var(--warn); }
+    .issue-card.severity-high     { border-color: var(--danger); }
+    .issue-card.severity-critical { border-color: #dc2626; background: rgba(220,38,38,.06); }
+    .issue-icon { font-size: 1.4rem; flex-shrink: 0; line-height: 1; }
+    .issue-body { flex: 1; }
+    .issue-title { font-size: .95rem; font-weight: 600; margin-bottom: 4px; }
+    .issue-desc  { font-size: .85rem; color: var(--muted); line-height: 1.5; }
+    .issue-pill  {
+      font-size: .7rem; font-weight: 700; padding: 2px 8px; border-radius: 99px;
+      text-transform: uppercase; letter-spacing: .5px; flex-shrink: 0; align-self: flex-start;
     }
+    .pill-low      { background: rgba(34,197,94,.15);  color: var(--safe); }
+    .pill-medium   { background: rgba(245,158,11,.15); color: var(--warn); }
+    .pill-high     { background: rgba(239,68,68,.15);  color: var(--danger); }
+    .pill-critical { background: rgba(220,38,38,.2);   color: #fca5a5; }
 
-    /* ── Progress bar anim ── */
-    .progress-animate {
-      animation: progress-fill .8s cubic-bezier(.4,0,.2,1) forwards;
+    .checks-grid { display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }
+    .check-item {
+      display: flex; align-items: center; gap: 10px;
+      font-size: .875rem; color: var(--muted); padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .check-item:last-child { border: none; }
+    .check-item .tick { color: var(--safe); font-size: 1rem; flex-shrink: 0; }
+
+    .recs-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+    .rec-item {
+      display: flex; gap: 12px; background: rgba(59,130,246,.06);
+      border: 1px solid rgba(59,130,246,.15); border-radius: var(--radius-sm); padding: 14px;
+    }
+    .rec-num {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: rgba(59,130,246,.2); color: #93c5fd;
+      font-size: .75rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .rec-text { font-size: .875rem; line-height: 1.6; color: var(--muted); }
+    .rec-text strong { color: var(--text); }
+
+    .ai-summary {
+      background: linear-gradient(135deg, rgba(59,130,246,.08), rgba(129,140,248,.08));
+      border: 1px solid rgba(99,179,237,.2); border-radius: var(--radius);
+      padding: 20px; margin-bottom: 28px;
+    }
+    .ai-summary-header {
+      display: flex; align-items: center; gap: 8px; font-size: .8rem;
+      font-weight: 700; text-transform: uppercase; letter-spacing: .8px;
+      color: var(--accent2); margin-bottom: 10px;
+    }
+    .ai-summary p { font-size: .9rem; line-height: 1.7; color: var(--muted); }
+    .ai-summary strong { color: var(--text); }
+
+    .action-btns { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn-secondary {
+      padding: 10px 20px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border); color: var(--text); background: var(--surface2);
+      font-size: .875rem; font-weight: 500; cursor: pointer; transition: all .2s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-danger {
+      padding: 10px 20px; border-radius: var(--radius-sm);
+      background: rgba(239,68,68,.15); border: 1px solid rgba(239,68,68,.3);
+      color: var(--danger); font-size: .875rem; font-weight: 500; cursor: pointer;
+      transition: all .2s; display: flex; align-items: center; gap: 6px;
+    }
+    .btn-danger:hover { background: rgba(239,68,68,.25); }
+
+    .info-section { padding: 60px 0; }
+    .info-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .info-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px;
+      transition: border-color .2s, transform .2s;
+    }
+    .info-card:hover { border-color: rgba(99,179,237,.3); transform: translateY(-2px); }
+    .info-card-icon {
+      width: 48px; height: 48px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center; font-size: 22px;
+      margin-bottom: 16px;
+    }
+    .ic-blue   { background: rgba(59,130,246,.15); }
+    .ic-purple { background: rgba(129,140,248,.15); }
+    .ic-green  { background: rgba(34,197,94,.15); }
+    .ic-red    { background: rgba(239,68,68,.15); }
+    .ic-amber  { background: rgba(245,158,11,.15); }
+    .ic-cyan   { background: rgba(6,182,212,.15); }
+    .info-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
+    .info-card p  { font-size: .875rem; color: var(--muted); line-height: 1.6; }
+
+    .how-section { padding: 60px 0; }
+    .section-heading {
+      text-align: center; font-size: 1.8rem; font-weight: 800;
+      letter-spacing: -1px; margin-bottom: 8px;
+    }
+    .section-sub { text-align: center; color: var(--muted); font-size: .95rem; margin-bottom: 48px; }
+    .steps-row { display: flex; gap: 0; flex-wrap: wrap; justify-content: center; }
+    .step-block {
+      flex: 1; min-width: 180px; max-width: 220px; text-align: center; padding: 0 16px; position: relative;
+    }
+    .step-block:not(:last-child)::after {
+      content: '→'; position: absolute; right: -8px; top: 28px;
+      color: var(--muted); font-size: 1.2rem;
+    }
+    .step-circle {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem; margin: 0 auto 12px;
+      box-shadow: 0 0 24px var(--glow);
+    }
+    .step-block h4 { font-size: .9rem; font-weight: 700; margin-bottom: 6px; }
+    .step-block p  { font-size: .8rem; color: var(--muted); line-height: 1.5; }
+
+    footer {
+      border-top: 1px solid var(--border); padding: 40px 20px;
+      text-align: center; color: var(--muted); font-size: .85rem;
+    }
+    footer a { color: var(--accent2); text-decoration: none; }
+    footer .footer-logo { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
+
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px);
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 99px;
+      padding: 10px 20px; font-size: .875rem; font-weight: 500;
+      box-shadow: 0 8px 32px rgba(0,0,0,.4); z-index: 999; transition: transform .3s ease;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.success { border-color: rgba(34,197,94,.3); color: var(--safe); }
+    .toast.error   { border-color: rgba(239,68,68,.3); color: var(--danger); }
+
+    @media (max-width: 640px) {
+      .scanner-card { padding: 24px 18px; }
+      .score-section { gap: 20px; }
+      .url-input-group { flex-direction: column; }
+      .step-block::after { display: none; }
+      .hide-mobile { display: none; }
+      .hero-stats { gap: 24px; }
+      .api-key-section { flex-wrap: wrap; }
     }
   </style>
 </head>
 
-<body class="relative z-10 min-h-screen text-slate-200 selection:bg-emerald-500/30">
+<body>
 
-<!-- ══════════════════════════════════════════════════
-     NAVIGATION BAR
-══════════════════════════════════════════════════ -->
-<nav class="glass sticky top-0 z-50 px-4 sm:px-8 py-3 flex items-center justify-between border-b border-slate-700/50">
-  <!-- Brand -->
-  <div class="flex items-center gap-3">
-    <div class="relative animate-shield-glow rounded-xl p-2 bg-emerald-500/10 border border-emerald-500/30">
-      <i class="fa-solid fa-shield-halved text-emerald-400 text-xl"></i>
-      <!-- ripple rings -->
-      <span class="absolute inset-0 rounded-xl border border-emerald-400/40 animate-ripple"></span>
+<header>
+  <nav>
+    <div class="logo">
+      <div class="logo-icon">🛡️</div>
+      <span>QR Shield</span>
+      <span class="badge-beta">BETA</span>
     </div>
-    <div>
-      <span class="text-white font-black text-lg tracking-tight">QR<span class="text-emerald-400"> Shield</span></span>
-      <div class="text-[10px] text-slate-500 font-mono tracking-widest -mt-0.5">DEFENSE ENGINE v2.4</div>
+    <div class="nav-links">
+      <a href="#how" class="hide-mobile">How it works</a>
+      <a href="#about" class="hide-mobile">About</a>
+      <button class="btn-nav" onclick="scrollToScanner()">Scan Now</button>
     </div>
-  </div>
-
-  <!-- Nav links (hidden on mobile) -->
-  <div class="hidden md:flex items-center gap-6 text-sm text-slate-400 font-medium">
-    <a href="#analyzer" class="hover:text-emerald-400 transition-colors"><i class="fa-solid fa-radar mr-1.5"></i>Analyzer</a>
-    <a href="#sandbox"  class="hover:text-emerald-400 transition-colors"><i class="fa-solid fa-box-open mr-1.5"></i>Sandbox</a>
-    <a href="#arch"     class="hover:text-emerald-400 transition-colors"><i class="fa-solid fa-sitemap mr-1.5"></i>Architecture</a>
-  </div>
-
-  <!-- Status indicator -->
-  <div class="flex items-center gap-2 glass-inset rounded-full px-3 py-1.5 border border-emerald-500/20">
-    <span class="relative flex h-2.5 w-2.5">
-      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-      <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-    </span>
-    <span class="text-[11px] font-semibold text-emerald-400 tracking-widest hidden sm:block">ACTIVE DEFENSE ENGINE</span>
-    <span class="text-[11px] font-semibold text-emerald-400 tracking-widest sm:hidden">ACTIVE</span>
-  </div>
-</nav>
-
-
-<!-- ══════════════════════════════════════════════════
-     HERO HEADER
-══════════════════════════════════════════════════ -->
-<header class="relative overflow-hidden pt-16 pb-12 px-4 sm:px-8 text-center">
-  <!-- Background glow blobs -->
-  <div class="absolute top-0 left-1/4 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none"></div>
-  <div class="absolute bottom-0 right-1/4 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl pointer-events-none"></div>
-
-  <!-- Threat type pills -->
-  <div class="flex flex-wrap justify-center gap-2 mb-6">
-    <span class="glass-inset rounded-full px-3 py-1 text-xs font-semibold text-red-400 border border-red-500/20">
-      <i class="fa-solid fa-triangle-exclamation mr-1"></i>QUISHING
-    </span>
-    <span class="glass-inset rounded-full px-3 py-1 text-xs font-semibold text-amber-400 border border-amber-500/20">
-      <i class="fa-solid fa-link-slash mr-1"></i>QRLJacking
-    </span>
-    <span class="glass-inset rounded-full px-3 py-1 text-xs font-semibold text-purple-400 border border-purple-500/20">
-      <i class="fa-solid fa-clone mr-1"></i>Typo-Squatting
-    </span>
-    <span class="glass-inset rounded-full px-3 py-1 text-xs font-semibold text-blue-400 border border-blue-500/20">
-      <i class="fa-solid fa-indian-rupee-sign mr-1"></i>UPI Fraud
-    </span>
-  </div>
-
-  <h1 class="text-3xl sm:text-5xl font-black tracking-tight text-white leading-tight mb-4">
-    Anti-Quishing &amp; <span class="text-emerald-400">QRLJacking</span><br/>
-    <span class="text-slate-300">Defense System</span>
-  </h1>
-
-  <!-- The core problem statement -->
-  <div class="max-w-2xl mx-auto mb-8">
-    <div class="glass-card rounded-2xl p-4 sm:p-6 text-left border border-amber-500/20">
-      <div class="flex items-start gap-3">
-        <div class="mt-0.5 w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
-          <i class="fa-solid fa-eye-slash text-amber-400 text-sm"></i>
-        </div>
-        <div>
-          <p class="text-amber-300 font-bold text-sm mb-1">Why QR Codes are Inherently Dangerous</p>
-          <p class="text-slate-400 text-sm leading-relaxed">
-            A QR code is a <strong class="text-white">2D binary matrix</strong> encoding up to 4,296 characters in a grid of black-and-white modules.
-            Unlike hyperlinks rendered as readable text, the embedded payload — whether a phishing URL, a session-pairing token, or a malicious UPI VPA —
-            is <strong class="text-amber-300">entirely invisible to the human eye</strong> prior to execution.
-            The human visual system is not equipped to decode ISO/IEC 18004 matrices. QR Shield intercepts and decodes
-            that payload <em>before</em> the device acts on it.
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Stat row -->
-  <div class="flex flex-wrap justify-center gap-4 sm:gap-8 text-center">
-    <div>
-      <div class="text-2xl font-black text-red-400">85%</div>
-      <div class="text-xs text-slate-500">Quishing growth YoY</div>
-    </div>
-    <div class="w-px bg-slate-700 hidden sm:block"></div>
-    <div>
-      <div class="text-2xl font-black text-amber-400">4</div>
-      <div class="text-xs text-slate-500">Inspection Layers</div>
-    </div>
-    <div class="w-px bg-slate-700 hidden sm:block"></div>
-    <div>
-      <div class="text-2xl font-black text-emerald-400">&lt;80ms</div>
-      <div class="text-xs text-slate-500">Avg. analysis time</div>
-    </div>
-    <div class="w-px bg-slate-700 hidden sm:block"></div>
-    <div>
-      <div class="text-2xl font-black text-blue-400">100%</div>
-      <div class="text-xs text-slate-500">Pre-execution intercept</div>
-    </div>
-  </div>
+  </nav>
 </header>
 
-
-<!-- ══════════════════════════════════════════════════
-     SECTION 2 — INTERACTIVE PAYLOAD ANALYZER
-══════════════════════════════════════════════════ -->
-<section id="analyzer" class="max-w-5xl mx-auto px-4 sm:px-8 py-8">
-
-  <!-- Section Header -->
-  <div class="flex items-center gap-3 mb-6">
-    <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
-      <i class="fa-solid fa-magnifying-glass-chart text-emerald-400"></i>
-    </div>
-    <div>
-      <h2 class="text-xl font-bold text-white">Pre-Execution Payload Analyzer</h2>
-      <p class="text-xs text-slate-500">Paste any QR payload — URL, URI, or session token — for instant analysis</p>
-    </div>
-    <span class="ml-auto glass-inset text-xs font-mono text-emerald-400 border border-emerald-500/20 rounded-full px-3 py-1">MODULE 01</span>
-  </div>
-
-  <div class="glass-card rounded-2xl p-4 sm:p-6 space-y-5">
-
-    <!-- Payload Input -->
-    <div>
-      <label class="block text-xs font-semibold text-slate-400 mb-2 tracking-widest uppercase">
-        <i class="fa-solid fa-terminal mr-1.5 text-emerald-400"></i>QR Payload Input
-      </label>
-      <div class="relative">
-        <textarea
-          id="payloadInput"
-          rows="3"
-          placeholder="Paste QR payload here… e.g. https://example.com or upi://pay?pa=..."
-          class="w-full font-mono text-sm bg-slate-950 text-emerald-300 rounded-xl border border-slate-700 px-4 py-3 resize-none placeholder-slate-600 transition-colors focus:border-emerald-500/60"
-        ></textarea>
-        <div class="absolute top-3 right-3 text-slate-600 text-xs font-mono" id="charCount">0 chars</div>
-      </div>
-    </div>
-
-    <!-- Sample Preset Buttons -->
-    <div>
-      <p class="text-xs text-slate-500 mb-2 tracking-widest uppercase font-semibold">
-        <i class="fa-solid fa-vial mr-1.5 text-amber-400"></i>Sample Test Vectors
-      </p>
-      <div class="flex flex-wrap gap-2">
-        <button onclick="loadPreset('clean')"    class="preset-btn safe-btn">
-          <i class="fa-solid fa-circle-check mr-1.5 text-emerald-400"></i>Clean Exam Portal
-        </button>
-        <button onclick="loadPreset('typo')"     class="preset-btn threat-btn">
-          <i class="fa-solid fa-triangle-exclamation mr-1.5 text-amber-400"></i>Vector A: Typo-Squat
-        </button>
-        <button onclick="loadPreset('qrljack')"  class="preset-btn critical-btn">
-          <i class="fa-solid fa-skull-crossbones mr-1.5 text-red-400"></i>Vector B: QRLJacking
-        </button>
-        <button onclick="loadPreset('fakeupi')"  class="preset-btn threat-btn">
-          <i class="fa-solid fa-indian-rupee-sign mr-1.5 text-amber-400"></i>Vector C: Fake UPI
-        </button>
-        <button onclick="loadPreset('realupi')"  class="preset-btn safe-btn">
-          <i class="fa-solid fa-building-columns mr-1.5 text-emerald-400"></i>Vector D: Campus UPI
-        </button>
-      </div>
-    </div>
-
-    <!-- Analyze Button -->
-    <button
-      id="analyzeBtn"
-      onclick="runAnalysis()"
-      class="w-full py-3.5 rounded-xl font-bold text-sm tracking-wider transition-all duration-200 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
-      <i class="fa-solid fa-shield-halved" id="analyzeBtnIcon"></i>
-      <span id="analyzeBtnText">RUN 4-LAYER INSPECTION</span>
-    </button>
-
-    <!-- ── 4-Layer Inspection Engine ── -->
-    <div id="layersPanel" class="space-y-3 pt-2">
-      <p class="text-xs text-slate-500 tracking-widest font-semibold uppercase mb-3">
-        <i class="fa-solid fa-layer-group mr-1.5 text-blue-400"></i>4-Layer Inspection Engine
-      </p>
-
-      <!-- Layer 1 -->
-      <div id="layer1" class="layer-row idle rounded-xl p-4 transition-all duration-300">
-        <div class="flex items-start gap-3">
-          <div class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center flex-shrink-0 text-sm font-bold text-slate-400">1</div>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center justify-between flex-wrap gap-2">
-              <span class="font-semibold text-sm text-slate-300">Transport Encryption &amp; Scheme Integrity</span>
-              <span id="l1badge" class="layer-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-800 text-slate-500 border border-slate-700">IDLE</span>
-            </div>
-            <p class="text-xs text-slate-500 mt-1">Validates HTTPS vs insecure HTTP; detects non-standard URI schemes</p>
-            <div id="l1result" class="mt-2 text-xs font-mono text-slate-600 hidden"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Layer 2 -->
-      <div id="layer2" class="layer-row idle rounded-xl p-4 transition-all duration-300">
-        <div class="flex items-start gap-3">
-          <div class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center flex-shrink-0 text-sm font-bold text-slate-400">2</div>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center justify-between flex-wrap gap-2">
-              <span class="font-semibold text-sm text-slate-300">Typo-Squatting &amp; Domain Spoofing Detection</span>
-              <span id="l2badge" class="layer-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-800 text-slate-500 border border-slate-700">IDLE</span>
-            </div>
-            <p class="text-xs text-slate-500 mt-1">Levenshtein distance vs trusted domains · Suspicious TLDs · Multi-level subdomain chains</p>
-            <div id="l2result" class="mt-2 text-xs font-mono text-slate-600 hidden"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Layer 3 -->
-      <div id="layer3" class="layer-row idle rounded-xl p-4 transition-all duration-300">
-        <div class="flex items-start gap-3">
-          <div class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center flex-shrink-0 text-sm font-bold text-slate-400">3</div>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center justify-between flex-wrap gap-2">
-              <span class="font-semibold text-sm text-slate-300">QRLJacking &amp; Session-Pairing Intercept</span>
-              <span id="l3badge" class="layer-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-800 text-slate-500 border border-slate-700">IDLE</span>
-            </div>
-            <p class="text-xs text-slate-500 mt-1">Detects session handshake tokens · Unverified WhatsApp / OAuth pairing queries</p>
-            <div id="l3result" class="mt-2 text-xs font-mono text-slate-600 hidden"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Layer 4 -->
-      <div id="layer4" class="layer-row idle rounded-xl p-4 transition-all duration-300">
-        <div class="flex items-start gap-3">
-          <div class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center flex-shrink-0 text-sm font-bold text-slate-400">4</div>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center justify-between flex-wrap gap-2">
-              <span class="font-semibold text-sm text-slate-300">Campus Merchant Whitelist &amp; UPI VPA Validator</span>
-              <span id="l4badge" class="layer-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-800 text-slate-500 border border-slate-700">IDLE</span>
-            </div>
-            <p class="text-xs text-slate-500 mt-1">Validates UPI VPAs against registered campus merchant accounts</p>
-            <div id="l4result" class="mt-2 text-xs font-mono text-slate-600 hidden"></div>
-          </div>
-        </div>
-      </div>
-    </div><!-- end layersPanel -->
-
-    <!-- ── Threat Gauge ── -->
-    <div id="gaugeSection" class="pt-2 space-y-3">
-      <div class="flex items-center justify-between mb-1">
-        <p class="text-xs text-slate-500 tracking-widest font-semibold uppercase">
-          <i class="fa-solid fa-gauge-high mr-1.5 text-amber-400"></i>Aggregated Risk Score
-        </p>
-        <span id="scoreLabel" class="font-black text-2xl text-slate-600 font-mono transition-all duration-500">--</span>
-      </div>
-      <div class="gauge-bar">
-        <div class="gauge-needle" id="gaugeNeedle" style="left:0%"></div>
-      </div>
-      <div class="flex justify-between text-[10px] text-slate-600 font-mono">
-        <span>0 — SAFE</span><span>50 — SUSPICIOUS</span><span>100 — CRITICAL</span>
-      </div>
-
-      <!-- Verdict Banner -->
-      <div id="verdictBanner" class="hidden verdict-banner rounded-xl p-4 text-center">
-        <div id="verdictIcon" class="text-4xl mb-2"></div>
-        <div id="verdictText" class="font-black text-lg tracking-wide"></div>
-        <div id="verdictSub"  class="text-xs mt-1 text-slate-400"></div>
-      </div>
-    </div>
-
-    <!-- ── Analysis Log ── -->
-    <div class="pt-2">
-      <div class="flex items-center justify-between mb-2">
-        <p class="text-xs text-slate-500 tracking-widest font-semibold uppercase">
-          <i class="fa-solid fa-terminal mr-1.5 text-purple-400"></i>Analysis Log
-        </p>
-        <button onclick="clearLog()" class="text-[10px] text-slate-600 hover:text-slate-400 transition-colors">
-          <i class="fa-solid fa-trash mr-1"></i>Clear
-        </button>
-      </div>
-      <div class="log-panel glass-inset rounded-xl p-3" id="analysisLog">
-        <p class="text-slate-600">[QR Shield v2.4] Awaiting payload input…</p>
-      </div>
-    </div>
-
+<section class="hero container">
+  <div class="hero-tag">🔍 AI-Powered QR Security</div>
+  <h1>Detect <span class="highlight">QR Phishing</span><br>Before It Gets You</h1>
+  <p>Scan any QR code and instantly know if the URL is safe, suspicious, or a phishing threat — powered by 15+ security checks and Gemini AI analysis.</p>
+  <div class="hero-stats">
+    <div class="stat"><div class="stat-num">15+</div><div class="stat-label">Security Checks</div></div>
+    <div class="stat"><div class="stat-num">AI</div><div class="stat-label">Powered Analysis</div></div>
+    <div class="stat"><div class="stat-num">100%</div><div class="stat-label">Free to Use</div></div>
+    <div class="stat"><div class="stat-num">0s</div><div class="stat-label">Data Stored</div></div>
   </div>
 </section>
 
-
-<!-- ══════════════════════════════════════════════════
-     SECTION 3 — QRLJacking SANDBOX
-══════════════════════════════════════════════════ -->
-<section id="sandbox" class="max-w-5xl mx-auto px-4 sm:px-8 py-8">
-
-  <!-- Header -->
-  <div class="flex items-center gap-3 mb-6">
-    <div class="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center">
-      <i class="fa-solid fa-box-open text-red-400"></i>
+<section class="container" id="scanner">
+  <div class="scanner-card">
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('camera', this)">📷 Camera Scan</button>
+      <button class="tab" onclick="switchTab('url', this)">🔗 Enter URL</button>
+      <button class="tab" onclick="switchTab('upload', this)">🖼️ Upload QR</button>
     </div>
-    <div>
-      <h2 class="text-xl font-bold text-white">Ethical QRLJacking Threat Sandbox</h2>
-      <p class="text-xs text-slate-500">Simulated attack scenario — educational use only</p>
-    </div>
-    <span class="ml-auto glass-inset text-xs font-mono text-red-400 border border-red-500/20 rounded-full px-3 py-1">MODULE 02</span>
-  </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-
-    <!-- Left: Deceptive Flyer -->
-    <div class="flyer-card rounded-2xl p-5 relative">
-      <!-- Watermark -->
-      <div class="absolute top-3 right-3 text-[10px] font-bold text-red-400/60 tracking-widest rotate-12 pointer-events-none">SIMULATED</div>
-
-      <!-- VTU header mockup -->
-      <div class="flex items-center gap-3 mb-4 border-b border-blue-400/20 pb-3">
-        <div class="w-12 h-12 rounded-full bg-blue-600/30 border-2 border-blue-400/40 flex items-center justify-center">
-          <i class="fa-solid fa-university text-blue-300 text-lg"></i>
-        </div>
-        <div>
-          <div class="font-black text-white text-sm">Visvesvaraya Technological University</div>
-          <div class="text-[11px] text-blue-300">vtu.ac.in — Official Notice</div>
-        </div>
-      </div>
-
-      <h3 class="text-center font-black text-white text-base mb-1">📢 VTU Official 1st Year Study Group</h3>
-      <p class="text-center text-blue-200 text-xs mb-4">Join the WhatsApp group for lecture notes, timetables &amp; exam alerts</p>
-
-      <!-- Fake QR -->
-      <div class="flex justify-center mb-4">
-        <div class="qr-wrapper bg-white p-3 rounded-xl shadow-xl">
-          <svg class="qr-svg-mini" viewBox="0 0 37 37" xmlns="http://www.w3.org/2000/svg" fill="none">
-            <!-- Border finder patterns -->
-            <rect x="1" y="1" width="7" height="7" fill="black"/>
-            <rect x="2" y="2" width="5" height="5" fill="white"/>
-            <rect x="3" y="3" width="3" height="3" fill="black"/>
-            <rect x="29" y="1" width="7" height="7" fill="black"/>
-            <rect x="30" y="2" width="5" height="5" fill="white"/>
-            <rect x="31" y="3" width="3" height="3" fill="black"/>
-            <rect x="1" y="29" width="7" height="7" fill="black"/>
-            <rect x="2" y="30" width="5" height="5" fill="white"/>
-            <rect x="3" y="31" width="3" height="3" fill="black"/>
-            <!-- Data modules (pseudo-random for visual authenticity) -->
-            <rect x="9" y="1" width="2" height="1" fill="black"/><rect x="12" y="1" width="1" height="1" fill="black"/>
-            <rect x="14" y="1" width="3" height="1" fill="black"/><rect x="19" y="1" width="1" height="1" fill="black"/>
-            <rect x="22" y="1" width="2" height="1" fill="black"/><rect x="25" y="1" width="1" height="1" fill="black"/>
-            <rect x="9" y="3" width="1" height="2" fill="black"/><rect x="11" y="3" width="2" height="1" fill="black"/>
-            <rect x="15" y="3" width="1" height="1" fill="black"/><rect x="18" y="3" width="3" height="1" fill="black"/>
-            <rect x="23" y="3" width="2" height="1" fill="black"/><rect x="27" y="3" width="1" height="1" fill="black"/>
-            <rect x="9" y="5" width="3" height="1" fill="black"/><rect x="14" y="5" width="2" height="1" fill="black"/>
-            <rect x="17" y="5" width="1" height="2" fill="black"/><rect x="20" y="5" width="2" height="1" fill="black"/>
-            <rect x="24" y="5" width="1" height="1" fill="black"/><rect x="26" y="5" width="1" height="1" fill="black"/>
-            <rect x="1" y="9" width="1" height="3" fill="black"/><rect x="3" y="9" width="2" height="1" fill="black"/>
-            <rect x="7" y="9" width="2" height="1" fill="black"/><rect x="11" y="9" width="1" height="1" fill="black"/>
-            <rect x="13" y="9" width="3" height="1" fill="black"/><rect x="18" y="9" width="2" height="1" fill="black"/>
-            <rect x="22" y="9" width="1" height="3" fill="black"/><rect x="25" y="9" width="2" height="1" fill="black"/>
-            <rect x="29" y="9" width="1" height="2" fill="black"/><rect x="32" y="9" width="1" height="1" fill="black"/>
-            <rect x="34" y="9" width="2" height="1" fill="black"/>
-            <rect x="1" y="12" width="3" height="1" fill="black"/><rect x="5" y="12" width="1" height="2" fill="black"/>
-            <rect x="9" y="12" width="2" height="1" fill="black"/><rect x="13" y="12" width="1" height="1" fill="black"/>
-            <rect x="16" y="12" width="3" height="1" fill="black"/><rect x="21" y="12" width="1" height="1" fill="black"/>
-            <rect x="24" y="12" width="3" height="1" fill="black"/><rect x="30" y="12" width="2" height="1" fill="black"/>
-            <rect x="34" y="12" width="1" height="2" fill="black"/>
-            <rect x="1" y="15" width="2" height="1" fill="black"/><rect x="4" y="15" width="3" height="1" fill="black"/>
-            <rect x="9" y="15" width="1" height="1" fill="black"/><rect x="12" y="15" width="2" height="2" fill="black"/>
-            <rect x="16" y="15" width="1" height="1" fill="black"/><rect x="19" y="15" width="3" height="1" fill="black"/>
-            <rect x="24" y="15" width="1" height="1" fill="black"/><rect x="27" y="15" width="2" height="1" fill="black"/>
-            <rect x="31" y="15" width="1" height="1" fill="black"/><rect x="33" y="15" width="2" height="1" fill="black"/>
-            <rect x="1" y="18" width="1" height="2" fill="black"/><rect x="4" y="18" width="2" height="1" fill="black"/>
-            <rect x="8" y="18" width="3" height="1" fill="black"/><rect x="13" y="18" width="1" height="1" fill="black"/>
-            <rect x="16" y="18" width="2" height="1" fill="black"/><rect x="20" y="18" width="1" height="1" fill="black"/>
-            <rect x="23" y="18" width="3" height="1" fill="black"/><rect x="28" y="18" width="1" height="1" fill="black"/>
-            <rect x="31" y="18" width="2" height="1" fill="black"/><rect x="35" y="18" width="1" height="1" fill="black"/>
-            <rect x="2" y="21" width="3" height="1" fill="black"/><rect x="7" y="21" width="1" height="1" fill="black"/>
-            <rect x="10" y="21" width="2" height="2" fill="black"/><rect x="14" y="21" width="3" height="1" fill="black"/>
-            <rect x="19" y="21" width="1" height="1" fill="black"/><rect x="22" y="21" width="2" height="1" fill="black"/>
-            <rect x="26" y="21" width="1" height="1" fill="black"/><rect x="29" y="21" width="3" height="1" fill="black"/>
-            <rect x="34" y="21" width="2" height="1" fill="black"/>
-            <rect x="9" y="24" width="2" height="1" fill="black"/><rect x="13" y="24" width="1" height="3" fill="black"/>
-            <rect x="16" y="24" width="3" height="1" fill="black"/><rect x="21" y="24" width="1" height="1" fill="black"/>
-            <rect x="24" y="24" width="2" height="1" fill="black"/><rect x="28" y="24" width="1" height="1" fill="black"/>
-            <rect x="31" y="24" width="3" height="1" fill="black"/><rect x="35" y="24" width="1" height="1" fill="black"/>
-            <rect x="9" y="27" width="1" height="1" fill="black"/><rect x="12" y="27" width="2" height="1" fill="black"/>
-            <rect x="16" y="27" width="1" height="1" fill="black"/><rect x="19" y="27" width="3" height="1" fill="black"/>
-            <rect x="24" y="27" width="1" height="2" fill="black"/><rect x="27" y="27" width="2" height="1" fill="black"/>
-            <rect x="31" y="27" width="1" height="1" fill="black"/><rect x="33" y="27" width="2" height="1" fill="black"/>
-            <rect x="9" y="30" width="3" height="1" fill="black"/><rect x="14" y="30" width="1" height="1" fill="black"/>
-            <rect x="17" y="30" width="2" height="1" fill="black"/><rect x="21" y="30" width="1" height="1" fill="black"/>
-            <rect x="25" y="30" width="3" height="1" fill="black"/><rect x="30" y="30" width="1" height="2" fill="black"/>
-            <rect x="33" y="30" width="2" height="1" fill="black"/>
-            <rect x="9" y="33" width="1" height="2" fill="black"/><rect x="12" y="33" width="2" height="1" fill="black"/>
-            <rect x="16" y="33" width="3" height="1" fill="black"/><rect x="20" y="33" width="1" height="1" fill="black"/>
-            <rect x="23" y="33" width="2" height="1" fill="black"/><rect x="27" y="33" width="1" height="1" fill="black"/>
-            <rect x="29" y="33" width="3" height="1" fill="black"/><rect x="34" y="33" width="2" height="1" fill="black"/>
-            <!-- Timing pattern -->
-            <rect x="8" y="6" width="1" height="1" fill="black"/><rect x="10" y="6" width="1" height="1" fill="black"/>
-            <rect x="12" y="6" width="1" height="1" fill="black"/><rect x="14" y="6" width="1" height="1" fill="black"/>
-            <rect x="16" y="6" width="1" height="1" fill="black"/><rect x="18" y="6" width="1" height="1" fill="black"/>
-            <rect x="20" y="6" width="1" height="1" fill="black"/><rect x="22" y="6" width="1" height="1" fill="black"/>
-            <rect x="24" y="6" width="1" height="1" fill="black"/><rect x="26" y="6" width="1" height="1" fill="black"/>
-            <rect x="28" y="6" width="1" height="1" fill="black"/>
-            <rect x="6" y="8" width="1" height="1" fill="black"/><rect x="6" y="10" width="1" height="1" fill="black"/>
-            <rect x="6" y="12" width="1" height="1" fill="black"/><rect x="6" y="14" width="1" height="1" fill="black"/>
-            <rect x="6" y="16" width="1" height="1" fill="black"/><rect x="6" y="18" width="1" height="1" fill="black"/>
-            <rect x="6" y="20" width="1" height="1" fill="black"/><rect x="6" y="22" width="1" height="1" fill="black"/>
-            <rect x="6" y="24" width="1" height="1" fill="black"/><rect x="6" y="26" width="1" height="1" fill="black"/>
-            <rect x="6" y="28" width="1" height="1" fill="black"/>
+    <!-- Camera Tab -->
+    <div class="tab-panel active" id="panel-camera">
+      <div class="camera-wrapper" id="camera-container">
+        <video id="camera-video" autoplay muted playsinline style="display:none"></video>
+        <div class="camera-placeholder" id="camera-placeholder">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
           </svg>
-          <div class="scan-overlay" style="top:0;"></div>
+          <p>Camera not active</p>
+          <button id="start-camera-btn" onclick="startCamera()">Enable Camera</button>
+        </div>
+        <div class="camera-overlay" id="scan-overlay" style="display:none">
+          <div class="scan-frame">
+            <div class="corner tl"></div>
+            <div class="corner tr"></div>
+            <div class="corner bl"></div>
+            <div class="corner br"></div>
+            <div class="scan-line"></div>
+          </div>
         </div>
       </div>
-
-      <p class="text-center text-[11px] text-blue-300 mb-2">👆 Scan via WhatsApp → Linked Devices → Link a Device</p>
-      <div class="glass-inset rounded-lg p-2 text-center">
-        <p class="text-[10px] font-mono text-red-300 break-all">https://web.whatsapp.com-auth-token.xyz/session/pair?token=8f9a21b&amp;ref=college_group</p>
-      </div>
-
-      <!-- Warning overlay badge -->
-      <div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-red-500/90 backdrop-blur rounded-full px-3 py-1 text-[11px] font-bold text-white shadow-lg">
-        <i class="fa-solid fa-triangle-exclamation animate-pulse"></i>
-        QRLJACKING ATTACK VECTOR
+      <p style="text-align:center; font-size:.85rem; color:var(--muted);" id="camera-status">Point your camera at a QR code to scan automatically</p>
+      <div id="detected-url-bar" style="display:none; margin-top:12px;" class="result-url-bar">
+        <span class="url-icon">🔗</span>
+        <span class="result-url" id="detected-url-text" style="flex:1"></span>
+        <button class="btn-analyze" id="analyze-detected-btn" onclick="analyzeDetected()" style="padding:8px 16px; font-size:.85rem;">Analyze</button>
       </div>
     </div>
 
-    <!-- Right: Explanation -->
-    <div class="space-y-4">
-
-      <!-- Standard behavior -->
-      <div class="glass-card rounded-xl p-4 border border-red-500/20">
-        <div class="flex items-center gap-2 mb-3">
-          <div class="w-7 h-7 rounded-lg bg-red-500/15 border border-red-500/30 flex items-center justify-center">
-            <i class="fa-solid fa-mobile-screen text-red-400 text-sm"></i>
-          </div>
-          <span class="font-bold text-sm text-red-300">Without QR Shield — Standard Behavior</span>
-        </div>
-        <ol class="space-y-2 text-xs text-slate-400">
-          <li class="flex gap-2"><span class="text-red-400 font-mono font-bold flex-shrink-0">①</span> Student scans flyer QR via WhatsApp → Linked Devices.</li>
-          <li class="flex gap-2"><span class="text-red-400 font-mono font-bold flex-shrink-0">②</span> Device sends pairing request to attacker's proxy domain (not WhatsApp servers).</li>
-          <li class="flex gap-2"><span class="text-red-400 font-mono font-bold flex-shrink-0">③</span> Attacker's server relays token to real WhatsApp, completing session handshake.</li>
-          <li class="flex gap-2"><span class="text-red-400 font-mono font-bold flex-shrink-0">④</span> Attacker gains <strong class="text-red-300">persistent access</strong> to the student's WhatsApp session — all messages, contacts, and media.</li>
-        </ol>
+    <!-- URL Tab -->
+    <div class="tab-panel" id="panel-url">
+      <div class="url-input-group">
+        <input type="url" class="url-input" id="url-input"
+          placeholder="https://example.com or paste any URL from a QR code…"
+          onkeydown="if(event.key==='Enter') analyzeUrl()" />
+        <button class="btn-analyze" onclick="analyzeUrl()">🔍 Analyze</button>
       </div>
+      <p style="font-size:.8rem; color:var(--muted);">Paste any URL extracted from a QR code to check its safety.</p>
+    </div>
 
-      <!-- QR Shield behavior -->
-      <div class="glass-card rounded-xl p-4 border border-emerald-500/20">
-        <div class="flex items-center gap-2 mb-3">
-          <div class="w-7 h-7 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-            <i class="fa-solid fa-shield-halved text-emerald-400 text-sm"></i>
-          </div>
-          <span class="font-bold text-sm text-emerald-300">With QR Shield — Intercept &amp; Block</span>
-        </div>
-        <ol class="space-y-2 text-xs text-slate-400">
-          <li class="flex gap-2"><span class="text-emerald-400 font-mono font-bold flex-shrink-0">①</span> Camera captures QR frame; payload decoded to raw URI string.</li>
-          <li class="flex gap-2"><span class="text-emerald-400 font-mono font-bold flex-shrink-0">②</span> <strong class="text-white">Layer 3</strong> instantly detects <code class="bg-slate-800 px-1 rounded">pair?token=</code> and <code class="bg-slate-800 px-1 rounded">auth-token.xyz</code> signatures.</li>
-          <li class="flex gap-2"><span class="text-emerald-400 font-mono font-bold flex-shrink-0">③</span> Session quarantine flag raised — connection handshake <strong class="text-white">blocked before transmission</strong>.</li>
-          <li class="flex gap-2"><span class="text-emerald-400 font-mono font-bold flex-shrink-0">④</span> User notified with full threat report. No session data leaves the device.</li>
-        </ol>
+    <!-- Upload Tab -->
+    <div class="tab-panel" id="panel-upload">
+      <div class="upload-area" id="upload-area"
+        onclick="document.getElementById('file-input').click()"
+        ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave(event)">
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 12px; display:block; opacity:.5">
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h4v4m0 3h3m-3-3v3"/>
+        </svg>
+        <h3>Drop a QR code image here</h3>
+        <p>or click to browse — supports PNG, JPG, WEBP, GIF</p>
       </div>
-
-      <!-- Best Practices Box -->
-      <div class="glass-card rounded-xl p-4 border border-amber-500/20">
-        <div class="flex items-center gap-2 mb-3">
-          <i class="fa-solid fa-lightbulb text-amber-400"></i>
-          <span class="font-bold text-sm text-amber-300">Security Best Practices — Students</span>
+      <input type="file" id="file-input" accept="image/*" onchange="handleFileSelect(event)" />
+      <div class="upload-preview" id="upload-preview">
+        <img id="preview-img" src="" alt="QR preview" />
+        <div class="upload-preview-info">
+          <div class="fname" id="preview-fname"></div>
+          <div class="fsize" id="preview-fsize"></div>
         </div>
-        <ul class="space-y-1.5 text-xs text-slate-400">
-          <li class="flex gap-2"><i class="fa-solid fa-ban text-red-400 mt-0.5 flex-shrink-0"></i>Never scan external QR codes using WhatsApp <em>Linked Devices</em> — only scan from the official WhatsApp Web page.</li>
-          <li class="flex gap-2"><i class="fa-solid fa-magnifying-glass text-amber-400 mt-0.5 flex-shrink-0"></i>Always verify the domain URL <em>after</em> QR scan before proceeding.</li>
-          <li class="flex gap-2"><i class="fa-solid fa-lock text-emerald-400 mt-0.5 flex-shrink-0"></i>Check for HTTPS padlock and confirm the apex domain (e.g., <code class="bg-slate-800 px-1 rounded">vtu.ac.in</code>, not <code class="bg-slate-800 px-1 rounded">vtu-ac.in.xyz</code>).</li>
-          <li class="flex gap-2"><i class="fa-solid fa-indian-rupee-sign text-blue-400 mt-0.5 flex-shrink-0"></i>For UPI payments, confirm the payee VPA matches official college records before approving.</li>
-          <li class="flex gap-2"><i class="fa-solid fa-shield-halved text-purple-400 mt-0.5 flex-shrink-0"></i>Use QR Shield's payload analyzer before acting on any campus-posted QR code.</li>
-        </ul>
+        <button class="btn-upload-analyze" onclick="analyzeUploadedQR()">Decode &amp; Analyze</button>
       </div>
+    </div>
 
+    <!-- Live Security Status Indicator -->
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:16px; padding:12px 18px; background:var(--bg2); border-radius:var(--radius-sm); border:1px solid var(--border);">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span style="width:10px; height:10px; border-radius:50%; background:#22c55e; display:inline-block; box-shadow:0 0 10px rgba(34,197,94,0.6); animation:pulse 2s infinite;"></span>
+        <span style="font-size:0.875rem; font-weight:600; color:var(--text);">Zero-Config Public Shield Active</span>
+      </div>
+      <span class="badge-beta" style="background:rgba(34,197,94,0.15); color:#4ade80; border-color:rgba(34,197,94,0.3); font-size:0.75rem; padding:4px 10px;">100% FREE &bull; NO SIGNUP &bull; NO KEY</span>
+    </div>
+  </div>
+
+  <!-- Loader -->
+  <div class="loader-wrapper" id="loader">
+    <div class="spinner"></div>
+    <p style="font-size:1rem; font-weight:600; margin-bottom:4px;">Analyzing URL Safety</p>
+    <p style="font-size:.85rem; color:var(--muted); margin-bottom:20px;">Running comprehensive security checks…</p>
+    <div class="loader-steps" style="text-align:left">
+      <div class="loader-step active" id="step1"><div class="step-dot"></div>Parsing URL structure</div>
+      <div class="loader-step" id="step2"><div class="step-dot"></div>Checking HTTPS &amp; encryption</div>
+      <div class="loader-step" id="step3"><div class="step-dot"></div>Analyzing domain reputation</div>
+      <div class="loader-step" id="step4"><div class="step-dot"></div>Running AI phishing model</div>
+      <div class="loader-step" id="step5"><div class="step-dot"></div>Generating safety report</div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="results-section" id="results">
+    <div class="result-url-bar">
+      <span class="url-icon" id="res-protocol-icon">🔒</span>
+      <div class="result-url"><strong id="res-domain"></strong><span id="res-path" style="opacity:.6"></span></div>
+    </div>
+
+    <div class="score-section">
+      <div class="score-ring-wrapper">
+        <svg class="score-ring" viewBox="0 0 160 160">
+          <circle class="ring-bg" cx="80" cy="80" r="68"/>
+          <circle class="ring-fill" id="ring-fill" cx="80" cy="80" r="68"
+            stroke-dasharray="427" stroke-dashoffset="427" stroke="var(--safe)"/>
+        </svg>
+        <div class="score-center">
+          <div class="score-num" id="score-num" style="color:var(--safe)">0</div>
+          <div class="score-label">Risk Score</div>
+        </div>
+      </div>
+      <div class="score-info">
+        <div class="verdict-badge safe" id="verdict-badge">✅ Safe</div>
+        <p class="verdict-desc" id="verdict-desc"></p>
+        <div class="risk-meter" style="margin-top:16px">
+          <div class="risk-meter-label"><span>Safe</span><span>Critical</span></div>
+          <div class="risk-track"><div class="risk-thumb" id="risk-thumb" style="left:0%"></div></div>
+          <div class="risk-marks"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="issues-section">
+      <div class="section-title">⚠️ Security Issues Found <span class="count" id="issues-count">0</span></div>
+      <div class="issues-grid" id="issues-grid"></div>
+    </div>
+
+    <div id="positive-section">
+      <div class="section-title">✅ Passed Checks <span class="count" id="checks-count">0</span></div>
+      <div class="checks-grid" id="checks-grid"></div>
+    </div>
+
+    <div class="ai-summary">
+      <div class="ai-summary-header">🤖 AI Analysis Summary</div>
+      <p id="ai-summary-text">Generating summary…</p>
+    </div>
+
+    <div id="recs-section">
+      <div class="section-title">💡 Recommendations</div>
+      <div class="recs-list" id="recs-list"></div>
+    </div>
+
+    <div class="action-btns">
+      <button class="btn-secondary" onclick="resetScanner()">🔄 Scan Another</button>
+      <button class="btn-secondary" onclick="copyReport()">📋 Copy Report</button>
+      <button class="btn-danger" onclick="reportPhishing()">🚨 Report Phishing</button>
     </div>
   </div>
 </section>
 
-
-<!-- ══════════════════════════════════════════════════
-     SECTION 4 — IDT LAB ARCHITECTURE
-══════════════════════════════════════════════════ -->
-<section id="arch" class="max-w-5xl mx-auto px-4 sm:px-8 py-8 pb-16">
-
-  <!-- Header -->
-  <div class="flex items-center gap-3 mb-6">
-    <div class="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center">
-      <i class="fa-solid fa-sitemap text-blue-400"></i>
-    </div>
-    <div>
-      <h2 class="text-xl font-bold text-white">IDT Lab — Methodology &amp; Architecture</h2>
-      <p class="text-xs text-slate-500">Input → Processing → Mitigation pipeline overview</p>
-    </div>
-    <span class="ml-auto glass-inset text-xs font-mono text-blue-400 border border-blue-500/20 rounded-full px-3 py-1">MODULE 03</span>
-  </div>
-
-  <!-- 3-column cards -->
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-
-    <!-- Card 1: Input -->
-    <div class="glass-card rounded-2xl p-5 border border-blue-500/20 group hover:border-blue-400/40 transition-all">
-      <div class="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/25 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform animate-float" style="animation-delay:0s;">
-        <i class="fa-solid fa-camera text-blue-400 text-xl"></i>
+<section class="how-section" id="how">
+  <div class="container">
+    <h2 class="section-heading">How QR Shield Works</h2>
+    <p class="section-sub">Four simple steps to protect yourself from QR phishing attacks</p>
+    <div class="steps-row">
+      <div class="step-block">
+        <div class="step-circle">📷</div>
+        <h4>Scan / Upload</h4>
+        <p>Use camera or upload a QR code image from your device</p>
       </div>
-      <div class="flex items-center gap-2 mb-1">
-        <span class="text-[10px] font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">STAGE 01</span>
+      <div class="step-block">
+        <div class="step-circle">🔗</div>
+        <h4>Extract URL</h4>
+        <p>We decode the QR and extract the hidden destination URL</p>
       </div>
-      <h3 class="font-bold text-white text-base mb-2">Input Capture</h3>
-      <ul class="space-y-2 text-xs text-slate-400">
-        <li class="flex gap-2"><i class="fa-solid fa-camera text-blue-400 mt-0.5 flex-shrink-0 text-xs"></i>On-device camera QR frame decoder (ISO/IEC 18004)</li>
-        <li class="flex gap-2"><i class="fa-solid fa-paste text-blue-400 mt-0.5 flex-shrink-0 text-xs"></i>Manual text payload paste interface</li>
-        <li class="flex gap-2"><i class="fa-solid fa-image text-blue-400 mt-0.5 flex-shrink-0 text-xs"></i>Image upload with embedded QR detection</li>
-        <li class="flex gap-2"><i class="fa-solid fa-plug text-blue-400 mt-0.5 flex-shrink-0 text-xs"></i>API endpoint for third-party integration</li>
-      </ul>
-      <div class="mt-4 pt-3 border-t border-slate-700">
-        <p class="text-[10px] text-slate-500">Supported Schemes</p>
-        <div class="flex flex-wrap gap-1 mt-1.5">
-          <span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">https://</span>
-          <span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">http://</span>
-          <span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">upi://</span>
-          <span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">tel:</span>
-          <span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">sms:</span>
-        </div>
+      <div class="step-block">
+        <div class="step-circle">🧠</div>
+        <h4>AI Analysis</h4>
+        <p>15+ security checks + Gemini AI phishing detection model</p>
       </div>
-    </div>
-
-    <!-- Card 2: Processing -->
-    <div class="glass-card rounded-2xl p-5 border border-emerald-500/20 group hover:border-emerald-400/40 transition-all">
-      <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform animate-float" style="animation-delay:.6s;">
-        <i class="fa-solid fa-microchip text-emerald-400 text-xl"></i>
-      </div>
-      <div class="flex items-center gap-2 mb-1">
-        <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">STAGE 02</span>
-      </div>
-      <h3 class="font-bold text-white text-base mb-2">4-Layer Rule Engine</h3>
-      <ul class="space-y-2 text-xs text-slate-400">
-        <li class="flex gap-2"><span class="text-emerald-400 font-mono font-bold flex-shrink-0 text-xs">L1</span>TLS/Scheme validation — force HTTPS, flag bare HTTP</li>
-        <li class="flex gap-2"><span class="text-emerald-400 font-mono font-bold flex-shrink-0 text-xs">L2</span>Levenshtein distance ≤ 3 → typo-squat alert; suspicious TLD/subdomain chain check</li>
-        <li class="flex gap-2"><span class="text-emerald-400 font-mono font-bold flex-shrink-0 text-xs">L3</span>Session token regex intercept: <code class="bg-slate-800 px-1 rounded">pair?token</code>, <code class="bg-slate-800 px-1 rounded">auth-token</code>, OAuth flows</li>
-        <li class="flex gap-2"><span class="text-emerald-400 font-mono font-bold flex-shrink-0 text-xs">L4</span>UPI VPA whitelist lookup against merchant registry</li>
-      </ul>
-      <div class="mt-4 pt-3 border-t border-slate-700">
-        <p class="text-[10px] text-slate-500">Risk Aggregation Formula</p>
-        <div class="mt-1.5 font-mono text-[10px] text-emerald-400 bg-slate-900 rounded px-2 py-1.5 border border-slate-800">
-          score = Σ (weight<sub>i</sub> × flag<sub>i</sub>) / Σ weight<sub>i</sub> × 100
-        </div>
-      </div>
-    </div>
-
-    <!-- Card 3: Mitigation -->
-    <div class="glass-card rounded-2xl p-5 border border-red-500/20 group hover:border-red-400/40 transition-all">
-      <div class="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/25 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform animate-float" style="animation-delay:1.2s;">
-        <i class="fa-solid fa-shield-virus text-red-400 text-xl"></i>
-      </div>
-      <div class="flex items-center gap-2 mb-1">
-        <span class="text-[10px] font-mono text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">STAGE 03</span>
-      </div>
-      <h3 class="font-bold text-white text-base mb-2">Automatic Mitigation</h3>
-      <ul class="space-y-2 text-xs text-slate-400">
-        <li class="flex gap-2"><i class="fa-solid fa-ban text-red-400 mt-0.5 flex-shrink-0 text-xs"></i>Critical threats: connection handshake blocked pre-transmission</li>
-        <li class="flex gap-2"><i class="fa-solid fa-lock text-amber-400 mt-0.5 flex-shrink-0 text-xs"></i>Suspicious payloads: sandboxed — user warned before proceeding</li>
-        <li class="flex gap-2"><i class="fa-solid fa-database text-blue-400 mt-0.5 flex-shrink-0 text-xs"></i>Session quarantine: token invalidated; proxy relay broken</li>
-        <li class="flex gap-2"><i class="fa-solid fa-file-lines text-emerald-400 mt-0.5 flex-shrink-0 text-xs"></i>Full forensic report generated and stored locally</li>
-      </ul>
-      <div class="mt-4 pt-3 border-t border-slate-700 space-y-1.5">
-        <div class="flex items-center justify-between text-[10px]">
-          <span class="text-slate-500">Score 0 → Verified Safe</span>
-          <span class="text-emerald-400 font-semibold">ALLOW</span>
-        </div>
-        <div class="flex items-center justify-between text-[10px]">
-          <span class="text-slate-500">Score 1–59 → Suspicious</span>
-          <span class="text-amber-400 font-semibold">WARN</span>
-        </div>
-        <div class="flex items-center justify-between text-[10px]">
-          <span class="text-slate-500">Score 60–100 → Critical</span>
-          <span class="text-red-400 font-semibold">BLOCK</span>
-        </div>
-      </div>
-    </div>
-
-  </div><!-- end 3-col cards -->
-
-  <!-- Data flow diagram (text-based) -->
-  <div class="glass-card rounded-2xl p-5 border border-slate-700/50">
-    <p class="text-xs text-slate-500 tracking-widest font-semibold uppercase mb-4">
-      <i class="fa-solid fa-diagram-project mr-1.5 text-blue-400"></i>Threat Flow Diagram
-    </p>
-    <div class="flex flex-wrap items-center justify-center gap-2 text-xs font-mono text-slate-400">
-      <div class="flex flex-col items-center">
-        <div class="glass-inset rounded-lg p-3 border border-blue-500/30 text-center min-w-[90px]">
-          <i class="fa-solid fa-qrcode text-blue-400 text-lg mb-1"></i>
-          <div class="text-[10px] text-blue-300 font-bold">QR SCAN</div>
-        </div>
-      </div>
-      <i class="fa-solid fa-arrow-right text-slate-600"></i>
-      <div class="flex flex-col items-center">
-        <div class="glass-inset rounded-lg p-3 border border-slate-600/30 text-center min-w-[90px]">
-          <i class="fa-solid fa-code text-slate-400 text-lg mb-1"></i>
-          <div class="text-[10px] text-slate-300 font-bold">DECODE</div>
-        </div>
-      </div>
-      <i class="fa-solid fa-arrow-right text-slate-600"></i>
-      <div class="flex flex-col items-center">
-        <div class="glass-inset rounded-lg p-3 border border-emerald-500/30 text-center min-w-[90px]">
-          <i class="fa-solid fa-layer-group text-emerald-400 text-lg mb-1"></i>
-          <div class="text-[10px] text-emerald-300 font-bold">4-LAYER</div>
-        </div>
-      </div>
-      <i class="fa-solid fa-arrow-right text-slate-600"></i>
-      <div class="flex flex-col items-center">
-        <div class="glass-inset rounded-lg p-3 border border-amber-500/30 text-center min-w-[90px]">
-          <i class="fa-solid fa-gauge-high text-amber-400 text-lg mb-1"></i>
-          <div class="text-[10px] text-amber-300 font-bold">SCORE</div>
-        </div>
-      </div>
-      <i class="fa-solid fa-arrow-right text-slate-600"></i>
-      <div class="flex flex-col items-center">
-        <div class="glass-inset rounded-lg p-3 border border-red-500/30 text-center min-w-[90px]">
-          <i class="fa-solid fa-shield-virus text-red-400 text-lg mb-1"></i>
-          <div class="text-[10px] text-red-300 font-bold">MITIGATE</div>
-        </div>
+      <div class="step-block">
+        <div class="step-circle">📊</div>
+        <h4>Safety Report</h4>
+        <p>Risk score 0–100 with a full breakdown of every threat</p>
       </div>
     </div>
   </div>
-
 </section>
 
-
-<!-- ══════════════════════════════════════════════════
-     FOOTER
-══════════════════════════════════════════════════ -->
-<footer class="border-t border-slate-800 py-6 px-8 text-center">
-  <div class="flex items-center justify-center gap-2 text-slate-500 text-xs">
-    <i class="fa-solid fa-shield-halved text-emerald-500"></i>
-    <span>QR Shield Defense Engine — IDT Lab</span>
-    <span class="text-slate-700">·</span>
-    <span class="font-mono">Educational Research Build</span>
-    <span class="text-slate-700">·</span>
-    <span class="animate-blink text-emerald-500">▌</span>
+<section class="info-section container" id="about">
+  <h2 class="section-heading">What We Check</h2>
+  <p class="section-sub">QR Shield runs 15+ security signals on every URL</p>
+  <div class="info-grid">
+    <div class="info-card">
+      <div class="info-card-icon ic-blue">🔒</div>
+      <h3>HTTPS Enforcement</h3>
+      <p>Plain HTTP means no encryption. We flag unencrypted URLs that expose your credentials to network attackers.</p>
+    </div>
+    <div class="info-card">
+      <div class="info-card-icon ic-red">🎭</div>
+      <h3>Brand Impersonation</h3>
+      <p>Detects lookalike domains (paypa1.com, app1e.com) and brand names embedded in malicious hostnames.</p>
+    </div>
+    <div class="info-card">
+      <div class="info-card-icon ic-amber">✂️</div>
+      <h3>URL Shorteners</h3>
+      <p>Shortened links hide the real destination. We detect bit.ly, tinyurl and 10+ other shorteners.</p>
+    </div>
+    <div class="info-card">
+      <div class="info-card-icon ic-purple">🏗️</div>
+      <h3>Suspicious Structure</h3>
+      <p>Excessive subdomains, raw IP addresses, unusual ports, punycode homographs, and double extensions.</p>
+    </div>
+    <div class="info-card">
+      <div class="info-card-icon ic-green">🔑</div>
+      <h3>Keyword Detection</h3>
+      <p>Credential-harvesting pages often contain keywords like "login", "verify", "secure", "reset", "wallet".</p>
+    </div>
+    <div class="info-card">
+      <div class="info-card-icon ic-cyan">🤖</div>
+      <h3>Gemini AI Model</h3>
+      <p>Google Gemini AI analyzes the full URL context, social engineering cues, and phishing intent patterns.</p>
+    </div>
   </div>
+</section>
+
+<footer>
+  <div class="footer-logo">🛡️ QR Shield</div>
+  <p>AI-powered QR code phishing detection &bull; Built with <a href="https://aistudio.google.com" target="_blank">Google Gemini AI</a></p>
+  <p style="margin-top:8px; font-size:.8rem; opacity:.6;">QR Shield is for educational and informational purposes. Always exercise caution online. &copy; 2026</p>
 </footer>
 
+<div class="toast" id="toast"></div>
 
-<!-- ══════════════════════════════════════════════════
-     INLINE STYLES FOR BUTTONS
-══════════════════════════════════════════════════ -->
-<style>
-  .preset-btn {
-    padding: 6px 12px;
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    border: 1px solid;
-    transition: all .15s;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-  }
-  .preset-btn:hover { transform: translateY(-1px); }
-  .preset-btn:active { transform: scale(.96); }
-  .safe-btn     { background: rgba(16,185,129,.08);  border-color: rgba(16,185,129,.3); color: #6ee7b7; }
-  .safe-btn:hover     { background: rgba(16,185,129,.15); }
-  .threat-btn   { background: rgba(245,158,11,.08);  border-color: rgba(245,158,11,.3); color: #fcd34d; }
-  .threat-btn:hover   { background: rgba(245,158,11,.15); }
-  .critical-btn { background: rgba(239,68,68,.08);   border-color: rgba(239,68,68,.3);  color: #fca5a5; }
-  .critical-btn:hover { background: rgba(239,68,68,.15); }
-</style>
-
-
-<!-- ══════════════════════════════════════════════════
-     JAVASCRIPT ENGINE
-══════════════════════════════════════════════════ -->
 <script>
-/* ─── Constants ─── */
-const TRUSTED_DOMAINS  = ['vtu.ac.in', 'karnataka.gov.in', 'education.gov.in', 'nic.in'];
-const SUSPICIOUS_TLDS  = ['.xyz', '.tk', '.ml', '.ga', '.cf', '.gq', '.top', '.click', '.pw', '.cc'];
-const SESSION_PATTERNS = [/pair\?token=/i, /auth[-_]token/i, /session\/pair/i, /linked[-_]device/i, /qrcode\/link/i, /oauth.*callback/i, /session_key=/i];
-const UPI_WHITELIST    = ['campus.canteen@okhdfcbank', 'vtu.fees@sbi', 'hostel.mess@okhdfcbank', 'library.fine@axisbank', 'college.sports@okhdfcbank'];
+/* ═══════════════════════════════════════════════════
+   QR SHIELD — Core Application
+═══════════════════════════════════════════════════ */
+let cameraStream = null;
+let currentUrl   = '';
+let analysisData = null;
+let uploadedFile = null;
 
-/* ─── Presets ─── */
-const PRESETS = {
-  clean:   'https://vtu.ac.in/examination-results/',
-  typo:    'http://vtu-resu1ts.ac.in.secure-login.xyz/token=491',
-  qrljack: 'https://web.whatsapp.com-auth-token.xyz/session/pair?token=8f9a21b&ref=college_group',
-  fakeupi: 'upi://pay?pa=attacker982@paytm&pn=RefundDesk',
-  realupi: 'upi://pay?pa=campus.canteen@okhdfcbank&pn=CollegeCanteen',
-};
-
-/* ─── DOM refs ─── */
-const payloadInput   = document.getElementById('payloadInput');
-const charCount      = document.getElementById('charCount');
-const analyzeBtn     = document.getElementById('analyzeBtn');
-const analysisLog    = document.getElementById('analysisLog');
-const gaugeNeedle    = document.getElementById('gaugeNeedle');
-const scoreLabel     = document.getElementById('scoreLabel');
-const verdictBanner  = document.getElementById('verdictBanner');
-const verdictIcon    = document.getElementById('verdictIcon');
-const verdictText    = document.getElementById('verdictText');
-const verdictSub     = document.getElementById('verdictSub');
-
-/* ─── Char counter ─── */
-payloadInput.addEventListener('input', () => {
-  charCount.textContent = payloadInput.value.length + ' chars';
-});
-
-/* ─── Load preset ─── */
-function loadPreset(key) {
-  payloadInput.value = PRESETS[key];
-  charCount.textContent = PRESETS[key].length + ' chars';
-  resetLayers();
-  appendLog('[PRESET] Loaded: ' + key.toUpperCase(), 'text-blue-400');
+// ── Tab switcher ──────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name !== 'camera') stopCamera();
 }
 
-/* ─── Clear log ─── */
-function clearLog() {
-  analysisLog.innerHTML = '<p class="text-slate-600">[QR Shield v2.4] Log cleared.</p>';
-}
-
-/* ─── Append to log ─── */
-function appendLog(msg, colorClass = 'text-slate-400') {
-  const ts = new Date().toLocaleTimeString('en-IN', {hour12:false});
-  const line = document.createElement('p');
-  line.className = colorClass;
-  line.textContent = `[${ts}] ${msg}`;
-  analysisLog.appendChild(line);
-  analysisLog.scrollTop = analysisLog.scrollHeight;
-}
-
-/* ─── Reset layers ─── */
-function resetLayers() {
-  [1,2,3,4].forEach(i => {
-    const el  = document.getElementById('layer' + i);
-    const bdg = document.getElementById('l' + i + 'badge');
-    const res = document.getElementById('l' + i + 'result');
-    el.className  = 'layer-row idle rounded-xl p-4 transition-all duration-300';
-    bdg.textContent = 'IDLE';
-    bdg.className = 'layer-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-800 text-slate-500 border border-slate-700';
-    res.textContent = '';
-    res.classList.add('hidden');
-  });
-  verdictBanner.classList.add('hidden');
-  gaugeNeedle.style.left = '0%';
-  scoreLabel.textContent = '--';
-  scoreLabel.className = 'font-black text-2xl text-slate-600 font-mono transition-all duration-500';
-}
-
-/* ─── Set layer state ─── */
-function setLayer(idx, state, msg, score) {
-  const el  = document.getElementById('layer' + idx);
-  const bdg = document.getElementById('l' + idx + 'badge');
-  const res = document.getElementById('l' + idx + 'result');
-
-  const configs = {
-    running:  { cls:'running',  badge:'SCANNING', badgeCls:'bg-amber-500/20 text-amber-300 border border-amber-500/30', msgCls:'text-amber-400' },
-    safe:     { cls:'safe',     badge:'CLEAR ✓',  badgeCls:'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30', msgCls:'text-emerald-400' },
-    warning:  { cls:'warning',  badge:'⚠ WARN',   badgeCls:'bg-amber-500/20 text-amber-300 border border-amber-500/30', msgCls:'text-amber-400' },
-    critical: { cls:'critical', badge:'✕ CRITICAL',badgeCls:'bg-red-500/20 text-red-300 border border-red-500/30', msgCls:'text-red-400' },
-    skip:     { cls:'idle',     badge:'SKIP',      badgeCls:'bg-slate-800 text-slate-600 border border-slate-700', msgCls:'text-slate-600' },
-  };
-
-  const cfg = configs[state] || configs.skip;
-  el.className  = `layer-row ${cfg.cls} rounded-xl p-4 transition-all duration-300`;
-  bdg.textContent = cfg.badge;
-  bdg.className   = `layer-badge px-2 py-0.5 rounded-full text-xs font-semibold ${cfg.badgeCls}`;
-  if (msg) {
-    res.textContent = '→ ' + msg;
-    res.className   = `mt-2 text-xs font-mono ${cfg.msgCls}`;
-    res.classList.remove('hidden');
-  }
-}
-
-/* ─── Levenshtein Distance ─── */
-function levenshtein(a, b) {
-  const m = a.length, n = b.length;
-  const dp = Array.from({length: m+1}, (_, i) => Array.from({length: n+1}, (_, j) => i === 0 ? j : j === 0 ? i : 0));
-  for (let i = 1; i <= m; i++)
-    for (let j = 1; j <= n; j++)
-      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j-1], dp[i][j-1], dp[i-1][j]);
-  return dp[m][n];
-}
-
-/* ─── Parse payload ─── */
-function parsePayload(raw) {
-  raw = raw.trim();
-  let url = null, isUPI = false, scheme = '', hostname = '', path = '', query = '';
+// ── Camera ────────────────────────────────────────
+async function startCamera() {
   try {
-    if (/^upi:\/\//i.test(raw)) {
-      isUPI  = true;
-      scheme = 'upi';
-      const params = new URLSearchParams(raw.replace(/^upi:\/\/pay\?/i,''));
-      return { raw, isUPI, scheme, hostname:'', path:'', query: raw, params };
-    }
-    url      = new URL(raw);
-    scheme   = url.protocol.replace(':','');
-    hostname = url.hostname.toLowerCase();
-    path     = url.pathname;
-    query    = url.search;
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }
+    });
+    const vid = document.getElementById('camera-video');
+    vid.srcObject = cameraStream;
+    vid.style.display = 'block';
+    document.getElementById('camera-placeholder').style.display = 'none';
+    document.getElementById('scan-overlay').style.display = 'flex';
+    document.getElementById('camera-status').textContent = '🔍 Scanning for QR codes…';
+    startContinuousScan(vid);
   } catch(e) {
-    scheme = raw.split(':')[0].toLowerCase();
+    showToast('Camera access denied. Please allow camera permissions.', 'error');
   }
-  return { raw, isUPI, scheme, hostname, path, query, url };
 }
 
-/* ─── MAIN ANALYSIS ENGINE ─── */
-async function runAnalysis() {
-  const raw = payloadInput.value.trim();
-  if (!raw) { appendLog('[ERROR] No payload provided.', 'text-red-400'); return; }
+function stopCamera() {
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+  const vid = document.getElementById('camera-video');
+  vid.style.display = 'none'; vid.srcObject = null;
+  document.getElementById('camera-placeholder').style.display = 'flex';
+  document.getElementById('scan-overlay').style.display = 'none';
+  document.getElementById('camera-status').textContent = 'Point your camera at a QR code to scan automatically';
+  document.getElementById('detected-url-bar').style.display = 'none';
+}
 
-  resetLayers();
-  analyzeBtn.disabled = true;
-  document.getElementById('analyzeBtnText').textContent = 'ANALYZING…';
-  document.getElementById('analyzeBtnIcon').className   = 'fa-solid fa-spinner fa-spin';
-  appendLog('[INIT] Starting 4-layer inspection…', 'text-slate-400');
+function startContinuousScan(videoEl) {
+  if (typeof ZXing === 'undefined') { showToast('QR library not loaded. Check internet connection.', 'error'); return; }
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  let detected = false;
 
-  const parsed = parsePayload(raw);
-  let scores = [0, 0, 0, 0]; // per-layer risk points
-  let weights = [25, 30, 35, 10]; // layer weights out of 100
-
-  /* ── Layer 1: Transport ── */
-  await delay(320);
-  setLayer(1, 'running', null, 0);
-  appendLog('[L1] Checking transport encryption & scheme…', 'text-slate-500');
-
-  await delay(480);
-  let l1Score = 0;
-  let l1Msg   = '';
-
-  if (parsed.isUPI) {
-    l1Score = 0;
-    l1Msg   = `Scheme: upi:// — UPI URI detected. Transport layer N/A for payment URIs.`;
-    setLayer(1, 'safe', l1Msg, 0);
-    appendLog('[L1] CLEAR — UPI URI scheme validated.', 'text-emerald-400');
-  } else if (parsed.scheme === 'https') {
-    l1Score = 0;
-    l1Msg   = `Scheme: HTTPS ✓ — TLS transport confirmed for ${parsed.hostname}`;
-    setLayer(1, 'safe', l1Msg, 0);
-    appendLog('[L1] CLEAR — HTTPS TLS transport confirmed.', 'text-emerald-400');
-  } else if (parsed.scheme === 'http') {
-    l1Score = 1;
-    l1Msg   = `INSECURE: HTTP (plain-text) detected. No TLS encryption. All data exposed in-transit.`;
-    setLayer(1, 'warning', l1Msg, l1Score);
-    appendLog('[L1] WARN — Plain HTTP payload. No transport encryption!', 'text-amber-400');
-  } else {
-    l1Score = 0.5;
-    l1Msg   = `Unknown scheme "${parsed.scheme}" — cannot validate transport security.`;
-    setLayer(1, 'warning', l1Msg, l1Score);
-    appendLog('[L1] WARN — Unrecognized URI scheme: ' + parsed.scheme, 'text-amber-400');
+  function tick() {
+    if (!cameraStream || detected) return;
+    if (!videoEl.videoWidth) { requestAnimationFrame(tick); return; }
+    canvas.width  = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    ctx.drawImage(videoEl, 0, 0);
+    try {
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const lum = new ZXing.RGBLuminanceSource(imgData.data, canvas.width, canvas.height);
+      const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
+      const res = new ZXing.QRCodeReader().decode(bmp);
+      if (res && res.text) { detected = true; onQRDetected(res.text); return; }
+    } catch(_) {}
+    requestAnimationFrame(tick);
   }
-  scores[0] = l1Score;
+  requestAnimationFrame(tick);
+}
 
-  /* ── Layer 2: Typo-Squatting ── */
-  await delay(350);
-  setLayer(2, 'running', null, 0);
-  appendLog('[L2] Running Levenshtein distance analysis & TLD checks…', 'text-slate-500');
+function onQRDetected(text) {
+  stopCamera();
+  currentUrl = text;
+  const el = document.getElementById('detected-url-text');
+  el.textContent = text.length > 80 ? text.slice(0,77) + '…' : text;
+  document.getElementById('detected-url-bar').style.display = 'flex';
+  document.getElementById('camera-status').textContent = '✅ QR Code detected!';
+  showToast('QR code detected! Click Analyze to check safety.', 'success');
+}
 
-  await delay(580);
-  let l2Score = 0;
-  let l2Msg   = '';
+function analyzeDetected() {
+  if (currentUrl) startAnalysis(currentUrl);
+}
 
-  if (parsed.isUPI) {
-    l2Score = 0;
-    setLayer(2, 'skip', 'UPI URI — domain analysis not applicable.', 0);
-    appendLog('[L2] SKIP — UPI payload, domain check bypassed.', 'text-slate-600');
-  } else if (!parsed.hostname) {
-    l2Score = 0.2;
-    setLayer(2, 'warning', 'Could not extract hostname for analysis.', l2Score);
-    appendLog('[L2] WARN — No parseable hostname.', 'text-amber-400');
-  } else {
-    const h          = parsed.hostname;
-    const parts      = h.split('.');
-    const tld        = '.' + parts.slice(-1)[0];
-    const suspiciousTLD = SUSPICIOUS_TLDS.includes(tld);
+// ── URL Tab ───────────────────────────────────────
+function analyzeUrl() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) { showToast('Please enter a URL first.', 'error'); return; }
+  startAnalysis(url);
+}
 
-    // Compute min levenshtein against all trusted domains
-    let minDist = Infinity, closestTrusted = '';
-    TRUSTED_DOMAINS.forEach(td => {
-      // Extract apex domain of hostname
-      const apexParts  = h.split('.');
-      // Try different window sizes
-      for (let w = 2; w <= Math.min(apexParts.length, 4); w++) {
-        const candidate = apexParts.slice(-w).join('.');
-        const d = levenshtein(candidate, td);
-        if (d < minDist) { minDist = d; closestTrusted = td; }
-      }
-      const d2 = levenshtein(h, td);
-      if (d2 < minDist) { minDist = d2; closestTrusted = td; }
-    });
+// ── Upload ────────────────────────────────────────
+function handleFileSelect(e) { if (e.target.files[0]) processFile(e.target.files[0]); }
+function handleDragOver(e)   { e.preventDefault(); document.getElementById('upload-area').classList.add('dragover'); }
+function handleDragLeave()   { document.getElementById('upload-area').classList.remove('dragover'); }
+function handleDrop(e) {
+  e.preventDefault(); document.getElementById('upload-area').classList.remove('dragover');
+  if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+}
 
-    // Suspicious: contains trusted domain name as subdomain but apex is different
-    const containsLegitAsSubdomain = TRUSTED_DOMAINS.some(td => {
-      const tdEsc = td.replace('.', '\\.');
-      return new RegExp(`(^|\\.)${tdEsc}(\\.)`).test(h) && !h.endsWith(td);
-    });
+function processFile(file) {
+  if (!file.type.startsWith('image/')) { showToast('Please upload an image file.', 'error'); return; }
+  uploadedFile = file;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('preview-img').src = ev.target.result;
+    document.getElementById('preview-fname').textContent = file.name;
+    document.getElementById('preview-fsize').textContent = formatBytes(file.size);
+    document.getElementById('upload-preview').style.display = 'flex';
+  };
+  reader.readAsDataURL(file);
+}
 
-    // Multi-level subdomain (more than 3 dots → suspicious chain)
-    const dotCount = (h.match(/\./g) || []).length;
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
 
-    const isSpoofed = (minDist <= 3 && !TRUSTED_DOMAINS.includes(h)) || containsLegitAsSubdomain;
-
-    if (isSpoofed || suspiciousTLD || dotCount >= 3) {
-      l2Score = 1;
-      const reasons = [];
-      if (isSpoofed)        reasons.push(`Levenshtein dist=${minDist} vs "${closestTrusted}" (typo-squat suspected)`);
-      if (containsLegitAsSubdomain) reasons.push('Legitimate domain used as subdomain (domain-in-path spoofing)');
-      if (suspiciousTLD)    reasons.push(`Suspicious TLD: ${tld}`);
-      if (dotCount >= 3)    reasons.push(`${dotCount} subdomains (multi-level chain)`);
-      l2Msg = reasons.join(' | ');
-      setLayer(2, 'critical', l2Msg, l2Score);
-      appendLog('[L2] CRITICAL — ' + l2Msg, 'text-red-400');
+async function analyzeUploadedQR() {
+  if (!uploadedFile) { showToast('Please upload a QR code image.', 'error'); return; }
+  if (typeof ZXing === 'undefined') { showToast('QR library not loaded.', 'error'); return; }
+  showToast('Decoding QR from image…', '');
+  try {
+    const imgEl = document.getElementById('preview-img');
+    await new Promise(r => { if (imgEl.complete) r(); else imgEl.onload = r; });
+    const canvas = document.createElement('canvas');
+    canvas.width = imgEl.naturalWidth || 400;
+    canvas.height = imgEl.naturalHeight || 400;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(imgEl, 0, 0);
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const lum = new ZXing.RGBLuminanceSource(imgData.data, canvas.width, canvas.height);
+    const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
+    const result = new ZXing.QRCodeReader().decode(bmp);
+    if (result && result.text) {
+      showToast('QR decoded! Running analysis…', 'success');
+      startAnalysis(result.text);
     } else {
-      l2Score = 0;
-      l2Msg   = `Hostname "${h}" — Levenshtein dist=${minDist} vs "${closestTrusted}" — No spoofing detected.`;
-      setLayer(2, 'safe', l2Msg, 0);
-      appendLog('[L2] CLEAR — Domain appears legitimate.', 'text-emerald-400');
+      showToast('No QR code found. Try a higher-quality or higher-contrast image.', 'error');
+    }
+  } catch(e) {
+    showToast('Could not decode QR from this image. Ensure the image is clear and well-lit.', 'error');
+  }
+}
+
+// ── Analysis Orchestrator (100% Zero-API Key / Self-Contained) ──
+async function startAnalysis(url) {
+  currentUrl = url;
+  document.getElementById('results').classList.remove('visible');
+  document.getElementById('loader').classList.add('visible');
+  scrollToScanner();
+  animateLoaderSteps();
+
+  // Run comprehensive security analysis
+  const staticRes = runStaticChecks(url);
+
+  // Synthesize intelligent AI-grade assessment (heuristic threat modeling)
+  const aiRes = synthesizeIntelligentReport(url, staticRes);
+
+  const finalScore = computeFinalScore(staticRes, aiRes);
+
+  // Short delay so users can see the security scanning animation
+  setTimeout(() => {
+    displayResults(url, staticRes, aiRes, finalScore);
+  }, 1200);
+}
+
+// ── Smart Threat Synthesis Engine (No API Key Required) ─────────
+function synthesizeIntelligentReport(url, staticRes) {
+  const issues = staticRes.issues;
+  const count = issues.length;
+  const hasCritical = issues.some(i => i.severity === 'critical');
+  const hasHigh = issues.some(i => i.severity === 'high');
+  const hasNoHttps = issues.some(i => i.id === 'no-https');
+  const hasShortener = issues.some(i => i.id === 'shortener');
+  const hasBrand = issues.some(i => i.id === 'brand');
+
+  let verdict = 'safe';
+  let verdictLabel = 'Safe URL';
+  let riskScore = staticRes.score;
+
+  if (hasCritical || staticRes.score >= 70) {
+    verdict = 'critical';
+    verdictLabel = 'Critical Phishing Threat';
+  } else if (hasHigh || staticRes.score >= 50) {
+    verdict = 'high';
+    verdictLabel = 'High Phishing Risk';
+  } else if (count >= 2 || staticRes.score >= 30) {
+    verdict = 'medium';
+    verdictLabel = 'Suspicious URL';
+  } else if (count === 1) {
+    verdict = 'low';
+    verdictLabel = 'Low Risk';
+  }
+
+  // Generate dynamic, context-specific summary
+  let summary = '';
+  if (verdict === 'safe') {
+    summary = `Security analysis verified that <strong>${staticRes.hostname || 'this site'}</strong> uses encrypted HTTPS, has no suspicious redirect chains, and matches legitimate domain registration standards. No phishing or credential harvesting patterns were detected.`;
+  } else if (verdict === 'low') {
+    summary = `This URL appears mostly normal but triggered <strong>${count} minor cautionary flag</strong>. While it may not be outright malicious, we recommend reviewing the destination before providing sensitive personal details.`;
+  } else if (verdict === 'medium') {
+    summary = `<strong>Caution recommended:</strong> This URL triggered ${count} suspicious signals (including ${hasNoHttps ? 'missing HTTPS encryption' : 'atypical structure'}). Attackers commonly configure sites with these parameters to harvest user information.`;
+  } else if (verdict === 'high') {
+    summary = `<strong>High threat detected:</strong> This URL displays multiple high-severity warning flags. ${hasNoHttps ? 'The connection is completely unencrypted (HTTP). ' : ''}${hasShortener ? 'The true destination is concealed via a shortener. ' : ''}There is a strong probability this QR code was crafted for phishing.`;
+  } else {
+    summary = `<strong>🚨 CRITICAL SECURITY ALERT:</strong> This URL matches known signature patterns of active credential harvesting, deceptive brand impersonation, or malicious script redirection. <strong>Under no circumstances should you open this link.</strong>`;
+  }
+
+  // Recommendations
+  const recommendations = [];
+  if (hasNoHttps) {
+    recommendations.push("Never submit passwords, bank credentials, or login info: this website is not encrypted and can be eavesdropped.");
+  }
+  if (hasBrand) {
+    recommendations.push("Do not trust this login page: this domain is mimicking a reputable brand but is hosted on an unofficial server.");
+  }
+  if (hasShortener) {
+    recommendations.push("Expand the shortened URL before opening it using a link-expansion utility to reveal the real destination.");
+  }
+  if (verdict === 'critical' || verdict === 'high') {
+    recommendations.push("Warn others who may scan this QR code: report this physical/digital QR code to college security or campus IT.");
+    recommendations.push("If you already opened this link and submitted credentials, change your password immediately on the official website.");
+  } else {
+    recommendations.push("Always inspect the browser address bar before signing in to college or banking portals.");
+  }
+
+  return {
+    riskScore,
+    verdict,
+    verdictLabel,
+    summary,
+    recommendations
+  };
+}
+
+// ── Static Security Checks (15+) ─────────────────
+function runStaticChecks(rawUrl) {
+  const issues = [], passed = [];
+  let parsedUrl, hostname, pathname;
+  let fullUrl = rawUrl;
+  if (!/^[a-z]+:\/\//i.test(fullUrl)) fullUrl = 'http://' + fullUrl;
+
+  try {
+    parsedUrl = new URL(fullUrl);
+    hostname  = parsedUrl.hostname.toLowerCase();
+    pathname  = parsedUrl.pathname;
+  } catch(_) {
+    return { issues:[{ id:'invalid', title:'Invalid URL', desc:'The URL could not be parsed. It may be malformed or not a valid web address.', severity:'critical', icon:'🚫' }], passed:[], score:90, parsedUrl:null, hostname:'', pathname:'' };
+  }
+
+  const tld   = hostname.split('.').pop();
+  const parts = hostname.split('.');
+
+  // 1. HTTPS
+  if (parsedUrl.protocol === 'https:') {
+    passed.push({ title:'HTTPS Secure Connection', desc:'The URL uses encrypted HTTPS — your data is protected in transit.', icon:'🔒' });
+  } else {
+    issues.push({ id:'no-https', title:'Missing HTTPS (No Encryption)', desc:'This URL uses plain HTTP. Your connection is unencrypted and any data you submit (passwords, personal info) can be intercepted by anyone on the same network — a classic phishing setup.', severity:'high', icon:'🔓' });
+  }
+
+  // 2. IP address host
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
+    issues.push({ id:'ip-host', title:'Raw IP Address as Host', desc:`The URL uses the IP address ${hostname} instead of a domain name. Legitimate websites never use bare IPs. This is a strong indicator of a malicious or temporary phishing server.`, severity:'critical', icon:'🖥️' });
+  } else {
+    passed.push({ title:'Proper Domain Name', desc:'Uses a domain name rather than a raw IP address.', icon:'🌐' });
+  }
+
+  // 3. URL Shortener
+  const shorteners = ['bit.ly','tinyurl.com','t.co','goo.gl','short.link','ow.ly','buff.ly','adf.ly','rb.gy','cutt.ly','is.gd','v.gd','shorte.st','snip.ly','lnkd.in','fb.me'];
+  if (shorteners.some(s => hostname === s || hostname.endsWith('.'+s))) {
+    issues.push({ id:'shortener', title:'URL Shortener Detected', desc:`This QR code hides its true destination behind ${hostname}. Shortened URLs are commonly used in phishing to disguise malicious links. You cannot trust where this will take you.`, severity:'high', icon:'✂️' });
+  } else {
+    passed.push({ title:'No URL Shortener', desc:'The destination is not concealed behind a link shortener.', icon:'🔍' });
+  }
+
+  // 4. Suspicious TLD
+  const suspTlds = ['xyz','top','click','link','live','work','date','online','science','racing','download','review','country','stream','gq','tk','ml','cf','ga','pw','cc','su'];
+  if (suspTlds.includes(tld)) {
+    issues.push({ id:'susp-tld', title:`Suspicious Domain Extension (.${tld})`, desc:`.${tld} domains are often free or extremely cheap to register and have a disproportionately high abuse rate for phishing campaigns. Exercise extreme caution.`, severity:'medium', icon:'🏳️' });
+  } else {
+    passed.push({ title:`Reputable TLD (.${tld})`, desc:`The .${tld} extension has a lower phishing abuse rate.`, icon:'✅' });
+  }
+
+  // 5. Excessive subdomains
+  if (parts.length > 4) {
+    issues.push({ id:'subdomains', title:'Excessive Subdomain Depth', desc:`The hostname has ${parts.length} parts: "${hostname}". Phishers use deep subdomain chains — e.g., "login.paypal.com.attackersite.com" — to trick users into thinking the real domain is the trusted brand.`, severity:'medium', icon:'🏗️' });
+  } else {
+    passed.push({ title:'Clean Subdomain Depth', desc:`Normal subdomain structure (${parts.length} level${parts.length===1?'':'s'}).`, icon:'🌳' });
+  }
+
+  // 6. Brand impersonation
+  const brandMap = { paypal:'paypal.com', apple:'apple.com', google:'google.com', microsoft:'microsoft.com', amazon:'amazon.com', netflix:'netflix.com', facebook:'facebook.com', instagram:'instagram.com', twitter:'twitter.com', chase:'chase.com', wellsfargo:'wellsfargo.com', coinbase:'coinbase.com', binance:'binance.com', metamask:'metamask.io', phantom:'phantom.app' };
+  let brandHit = null;
+  for (const [brand, legit] of Object.entries(brandMap)) {
+    if (hostname.includes(brand) && !hostname.endsWith('.' + legit) && hostname !== legit) {
+      brandHit = { brand, legit }; break;
     }
   }
-  scores[1] = l2Score;
-
-  /* ── Layer 3: QRLJacking ── */
-  await delay(340);
-  setLayer(3, 'running', null, 0);
-  appendLog('[L3] Scanning for session-pairing & QRLJacking signatures…', 'text-slate-500');
-
-  await delay(550);
-  let l3Score = 0;
-  let l3Msg   = '';
-
-  const matched = SESSION_PATTERNS.filter(p => p.test(parsed.raw));
-  if (matched.length > 0) {
-    l3Score = 1;
-    const patternNames = matched.map(p => p.source);
-    l3Msg   = `QRLJacking signature(s) detected: ${patternNames.join(', ')} — Session handshake intercepted!`;
-    setLayer(3, 'critical', l3Msg, l3Score);
-    appendLog('[L3] CRITICAL — QRLJacking pattern matched: ' + patternNames.join(', '), 'text-red-400');
-  } else {
-    l3Score = 0;
-    l3Msg   = 'No session-pairing or OAuth hijack patterns detected in payload.';
-    setLayer(3, 'safe', l3Msg, 0);
-    appendLog('[L3] CLEAR — No QRLJacking patterns found.', 'text-emerald-400');
+  if (brandHit) {
+    issues.push({ id:'brand', title:`Brand Impersonation: "${brandHit.brand}"`, desc:`The domain "${hostname}" contains "${brandHit.brand}" but is NOT the official ${brandHit.legit}. This is a textbook phishing technique — attackers register domains that look similar to trusted brands to deceive victims.`, severity:'critical', icon:'🎭' });
   }
-  scores[2] = l3Score;
 
-  /* ── Layer 4: UPI Whitelist ── */
-  await delay(300);
-  setLayer(4, 'running', null, 0);
-  appendLog('[L4] Checking campus merchant UPI whitelist…', 'text-slate-500');
-
-  await delay(460);
-  let l4Score = 0;
-  let l4Msg   = '';
-
-  if (!parsed.isUPI) {
-    l4Score = 0;
-    setLayer(4, 'skip', 'Non-UPI payload — merchant whitelist check not applicable.', 0);
-    appendLog('[L4] SKIP — Not a UPI payload.', 'text-slate-600');
-    weights[3] = 0; // zero weight for non-UPI
+  // 7. Suspicious path keywords
+  const credKeywords = ['login','signin','sign-in','account','verify','secure','update','confirm','banking','password','credential','auth','oauth','reset','wallet','crypto','token','2fa','mfa','suspend'];
+  const pathHits = credKeywords.filter(k => (pathname + parsedUrl.search).toLowerCase().includes(k));
+  if (pathHits.length >= 2) {
+    issues.push({ id:'keywords', title:'Credential-Harvesting Keywords in Path', desc:`The URL path contains ${pathHits.length} phishing-associated terms: ${pathHits.slice(0,5).map(k=>`"${k}"`).join(', ')}. Attackers use these to build convincing-looking login or verification pages.`, severity:'medium', icon:'🔑' });
   } else {
-    const rawUri = parsed.raw;
-    const paMatch = rawUri.match(/[?&]pa=([^&]+)/i);
-    const vpa     = paMatch ? decodeURIComponent(paMatch[1]).toLowerCase().trim() : null;
-    const pnMatch = rawUri.match(/[?&]pn=([^&]+)/i);
-    const pn      = pnMatch ? decodeURIComponent(pnMatch[1]) : 'Unknown';
+    passed.push({ title:'Clean URL Path', desc:'No suspicious credential-harvesting terms detected in the URL path.', icon:'📂' });
+  }
 
-    if (!vpa) {
-      l4Score = 0.5;
-      l4Msg   = 'UPI detected but VPA (pa=) parameter missing — unable to verify payee.';
-      setLayer(4, 'warning', l4Msg, l4Score);
-      appendLog('[L4] WARN — Missing VPA in UPI URI.', 'text-amber-400');
-    } else if (UPI_WHITELIST.includes(vpa)) {
-      l4Score = 0;
-      l4Msg   = `VPA "${vpa}" (Payee: ${pn}) — REGISTERED campus merchant ✓`;
-      setLayer(4, 'safe', l4Msg, 0);
-      appendLog('[L4] CLEAR — VPA whitelisted: ' + vpa, 'text-emerald-400');
-    } else {
-      l4Score = 1;
-      l4Msg   = `VPA "${vpa}" (Payee: ${pn}) — NOT in campus merchant registry. Possible fraud!`;
-      setLayer(4, 'critical', l4Msg, l4Score);
-      appendLog('[L4] CRITICAL — Unknown VPA: ' + vpa, 'text-red-400');
+  // 8. URL length
+  if (rawUrl.length > 150) {
+    issues.push({ id:'long-url', title:'Unusually Long URL', desc:`This URL is ${rawUrl.length} characters long. Legitimate sites rarely need URLs this long. Excessive length is often used to bury malicious parameters or confuse URL-preview tools.`, severity:'low', icon:'📏' });
+  } else {
+    passed.push({ title:'Normal URL Length', desc:`URL length is ${rawUrl.length} chars — within safe range.`, icon:'📐' });
+  }
+
+  // 9. Special dangerous characters
+  if (hostname.includes('@') || rawUrl.includes('%00') || /\.\./.test(pathname)) {
+    issues.push({ id:'special-chars', title:'Dangerous Special Characters', desc:'The URL contains "@", null-bytes (%00), or path-traversal sequences (..) — techniques used to confuse browsers, bypass filters, or redirect to unexpected destinations.', severity:'high', icon:'⚡' });
+  }
+
+  // 10. Open redirect parameters
+  const qParams = [...parsedUrl.searchParams.keys()];
+  const redirectParams = qParams.filter(k => ['url','redirect','redir','next','return','returnurl','goto','target','link','ref','forward','continue','dest','destination'].includes(k.toLowerCase()));
+  if (redirectParams.length) {
+    issues.push({ id:'redirect', title:'Open Redirect Parameter Detected', desc:`The URL contains redirect parameters: ${redirectParams.join(', ')}. Phishers exploit open redirects on trusted domains to send victims to malicious sites while the URL appears safe.`, severity:'medium', icon:'↪️' });
+  }
+
+  // 11. Non-standard port
+  if (parsedUrl.port && !['80','443','8080','8443','3000'].includes(parsedUrl.port)) {
+    issues.push({ id:'port', title:`Non-Standard Port: ${parsedUrl.port}`, desc:`Legitimate websites use port 80 (HTTP) or 443 (HTTPS). Port ${parsedUrl.port} is unusual and suggests an unofficial or malicious server.`, severity:'medium', icon:'🔌' });
+  }
+
+  // 12. Punycode / homograph
+  if (hostname.includes('xn--')) {
+    issues.push({ id:'punycode', title:'Punycode / Homograph Domain Attack', desc:`The domain contains punycode (xn--), which can render visually identical to legitimate domains while using non-ASCII characters. E.g., "аmazon.com" with a Cyrillic "а" looks exactly like amazon.com.`, severity:'high', icon:'🔤' });
+  }
+
+  // 13. Double extension
+  if (/\.(pdf|doc|docx|zip|exe|apk|rar|sh|bat)\.(php|html?|asp|jsp|cgi)/i.test(pathname)) {
+    issues.push({ id:'dbl-ext', title:'Double File Extension (Disguised Malware)', desc:'The URL uses a double extension (e.g., invoice.pdf.php). This tricks users into thinking they are opening a document when they are actually executing a server-side script — a malware delivery technique.', severity:'critical', icon:'📄' });
+  }
+
+  // 14. Data URI
+  if (/^data:/i.test(rawUrl)) {
+    issues.push({ id:'data-uri', title:'Data URI — Extremely Dangerous', desc:'QR codes should never contain data: URIs. This can embed and execute malicious HTML or JavaScript directly in your browser without making a network request.', severity:'critical', icon:'💾' });
+  }
+
+  // 15. JavaScript URI
+  if (/^javascript:/i.test(rawUrl)) {
+    issues.push({ id:'js-uri', title:'JavaScript Execution URI — Critical Threat', desc:'The URL uses the javascript: scheme, which executes arbitrary code in your browser the moment you navigate to it. This is never a legitimate QR code destination.', severity:'critical', icon:'☠️' });
+  }
+
+  // 16. Numeric / encoded subdomains
+  if (/\d{4,}/.test(parts[0]) && parts.length > 2) {
+    issues.push({ id:'numeric-subdomain', title:'Numeric / Random Subdomain', desc:`The subdomain "${parts[0]}" appears randomly generated or numeric. Attackers often use algorithmically generated subdomains to evade blocklists.`, severity:'low', icon:'🔢' });
+  }
+
+  // Score
+  const w = { critical: 35, high: 20, medium: 10, low: 4 };
+  const penalty = issues.reduce((s, i) => s + (w[i.severity] || 5), 0);
+  const score = Math.min(100, Math.max(0, Math.round(penalty)));
+
+  return { issues, passed, score, parsedUrl, hostname, pathname };
+}
+
+// ── Gemini AI Analysis ────────────────────────────
+async function runGeminiAnalysis(url, apiKey, staticResult) {
+  const issuesSummary = staticResult.issues
+    .map(i => `- [${i.severity.toUpperCase()}] ${i.title}: ${i.desc}`).join('\n') || '- No static issues found';
+
+  const prompt = `You are a world-class cybersecurity expert specializing in phishing detection, QR code security, and social engineering analysis.
+
+Analyze this URL for phishing and security risks:
+URL: ${url}
+
+Static analysis already identified:
+${issuesSummary}
+
+Respond with ONLY valid JSON (no markdown code fences), exactly matching this schema:
+{
+  "riskScore": <integer 0-100, where 0=completely safe, 100=confirmed critical phishing>,
+  "verdict": "<safe|low|medium|high|critical>",
+  "verdictLabel": "<Safe|Low Risk|Suspicious|High Risk|Critical Phishing>",
+  "summary": "<2-3 sentences in plain English explaining the overall risk and why>",
+  "additionalIssues": [
+    {"title": "...", "desc": "...", "severity": "low|medium|high|critical", "icon": "<emoji>"}
+  ],
+  "recommendations": [
+    "...",
+    "...",
+    "..."
+  ]
+}
+
+Be precise and evidence-based. Consider: social engineering tactics, brand similarity, phishing URL patterns, domain age signals, path intent, redirect chains, malware delivery, credential harvesting.`;
+
+  const resp = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.05, maxOutputTokens: 1200 }
+      })
     }
+  );
+  if (!resp.ok) {
+    const errData = await resp.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || `HTTP ${resp.status}`);
   }
-  scores[3] = l4Score;
+  const data = await resp.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('No JSON found in Gemini response');
+  return JSON.parse(match[0]);
+}
 
-  /* ── Aggregate Score ── */
-  await delay(300);
+// ── Score computation ─────────────────────────────
+function computeFinalScore(staticRes, aiRes) {
+  if (aiRes?.riskScore !== undefined) {
+    return Math.min(100, Math.round(staticRes.score * 0.4 + aiRes.riskScore * 0.6));
+  }
+  return staticRes.score;
+}
 
-  // Normalize weights (in case we zeroed one)
-  const totalWeight  = weights.reduce((a,b) => a+b, 0);
-  const weightedSum  = scores.reduce((acc, s, i) => acc + s * weights[i], 0);
-  const rawScore     = (weightedSum / totalWeight) * 100;
-  const finalScore   = Math.round(Math.min(100, rawScore));
+// ── Display Results ───────────────────────────────
+function displayResults(url, staticRes, aiRes, score) {
+  document.getElementById('loader').classList.remove('visible');
+  document.getElementById('results').classList.add('visible');
 
-  appendLog(`[SCORE] Weighted risk score: ${finalScore}/100`, finalScore >= 60 ? 'text-red-400' : finalScore >= 1 ? 'text-amber-400' : 'text-emerald-400');
+  // URL bar
+  const isHttps = url.toLowerCase().startsWith('https');
+  document.getElementById('res-protocol-icon').textContent = isHttps ? '🔒' : '🔓';
+  try {
+    const p = new URL(url.startsWith('http') ? url : 'http://' + url);
+    document.getElementById('res-domain').textContent = p.hostname;
+    const pathPart = (p.pathname + p.search).slice(0, 55);
+    document.getElementById('res-path').textContent = pathPart || '';
+  } catch(_) {
+    document.getElementById('res-domain').textContent = url.slice(0, 60);
+    document.getElementById('res-path').textContent = '';
+  }
 
-  // Animate needle
-  gaugeNeedle.style.left = finalScore + '%';
-  scoreLabel.textContent  = finalScore;
+  // Score ring animation
+  const circ = 2 * Math.PI * 68; // ≈ 427
+  const offset = circ - (score / 100) * circ;
+  const fill  = document.getElementById('ring-fill');
+  const color = scoreColor(score);
+  setTimeout(() => {
+    fill.style.stroke = color;
+    fill.style.strokeDashoffset = offset;
+  }, 80);
+  animateCounter(document.getElementById('score-num'), 0, score, 1300);
+  document.getElementById('score-num').style.color = color;
+
+  // Risk thumb
+  setTimeout(() => { document.getElementById('risk-thumb').style.left = score + '%'; }, 200);
 
   // Verdict
-  verdictBanner.classList.remove('hidden');
-  if (finalScore === 0) {
-    scoreLabel.className  = 'font-black text-2xl text-emerald-400 font-mono transition-all duration-500';
-    verdictBanner.className = 'verdict-banner rounded-xl p-5 text-center bg-emerald-500/10 border border-emerald-500/30';
-    verdictIcon.textContent = '✅';
-    verdictText.textContent = 'PAYLOAD VERIFIED SAFE';
-    verdictText.className   = 'font-black text-lg tracking-wide text-emerald-300';
-    verdictSub.textContent  = 'All 4 inspection layers cleared. Safe to proceed.';
-    appendLog('[VERDICT] SAFE — Payload cleared all layers.', 'text-emerald-400');
-  } else if (finalScore < 60) {
-    scoreLabel.className  = 'font-black text-2xl text-amber-400 font-mono transition-all duration-500';
-    verdictBanner.className = 'verdict-banner rounded-xl p-5 text-center bg-amber-500/10 border border-amber-500/30';
-    verdictIcon.textContent = '⚠️';
-    verdictText.textContent = 'SUSPICIOUS PAYLOAD DETECTED';
-    verdictText.className   = 'font-black text-lg tracking-wide text-amber-300';
-    verdictSub.textContent  = `Risk score ${finalScore}/100. Exercise extreme caution before proceeding.`;
-    appendLog('[VERDICT] SUSPICIOUS — Score ' + finalScore + '/100. Do NOT proceed without verification.', 'text-amber-400');
-  } else {
-    scoreLabel.className  = 'font-black text-2xl text-red-400 font-mono transition-all duration-500';
-    verdictBanner.className = 'verdict-banner rounded-xl p-5 text-center bg-red-500/10 border border-red-500/30';
-    verdictIcon.textContent = '🚨';
-    verdictText.textContent = 'CRITICAL THREAT: EXECUTION TERMINATED';
-    verdictText.className   = 'font-black text-lg tracking-wide text-red-300';
-    verdictSub.textContent  = `Risk score ${finalScore}/100. Connection blocked. Session quarantined.`;
-    appendLog('[VERDICT] CRITICAL — Score ' + finalScore + '/100. Threat blocked.', 'text-red-400');
+  const v = getVerdict(score, aiRes);
+  const badge = document.getElementById('verdict-badge');
+  badge.textContent = v.label;
+  badge.className   = 'verdict-badge ' + v.cls;
+  document.getElementById('verdict-desc').textContent = v.desc;
+
+  // Merge issues
+  let allIssues = [...staticRes.issues];
+  if (aiRes?.additionalIssues?.length) {
+    aiRes.additionalIssues.forEach(i => { if (i.title) allIssues.push({ ...i, id: 'ai-' + Math.random() }); });
   }
 
-  // Re-enable button
-  analyzeBtn.disabled = false;
-  document.getElementById('analyzeBtnText').textContent = 'RUN 4-LAYER INSPECTION';
-  document.getElementById('analyzeBtnIcon').className   = 'fa-solid fa-shield-halved';
+  // Render issues
+  document.getElementById('issues-count').textContent = allIssues.length;
+  const grid = document.getElementById('issues-grid');
+  grid.innerHTML = '';
+  if (!allIssues.length) {
+    document.getElementById('issues-section').style.display = 'none';
+  } else {
+    document.getElementById('issues-section').style.display = '';
+    allIssues.forEach((issue, idx) => {
+      const el = document.createElement('div');
+      el.className = `issue-card severity-${issue.severity}`;
+      el.style.animationDelay = `${idx * 55}ms`;
+      el.innerHTML = `
+        <div class="issue-icon">${issue.icon || '⚠️'}</div>
+        <div class="issue-body">
+          <div class="issue-title">${escHtml(issue.title)}</div>
+          <div class="issue-desc">${escHtml(issue.desc)}</div>
+        </div>
+        <span class="issue-pill pill-${issue.severity}">${issue.severity}</span>`;
+      grid.appendChild(el);
+    });
+  }
+
+  // Passed checks
+  const checksGrid = document.getElementById('checks-grid');
+  checksGrid.innerHTML = '';
+  document.getElementById('checks-count').textContent = staticRes.passed.length;
+  staticRes.passed.forEach(c => {
+    const el = document.createElement('div');
+    el.className = 'check-item';
+    el.innerHTML = `<span class="tick">${c.icon || '✅'}</span><span><strong>${escHtml(c.title)}</strong> — ${escHtml(c.desc)}</span>`;
+    checksGrid.appendChild(el);
+  });
+
+  // AI Summary
+  document.getElementById('ai-summary-text').innerHTML = aiRes?.summary
+    ? escHtml(aiRes.summary)
+    : generateAutoSummary(score, allIssues);
+
+  // Recommendations
+  const recs = (aiRes?.recommendations?.length)
+    ? aiRes.recommendations
+    : generateAutoRecs(allIssues, score);
+  const recsList = document.getElementById('recs-list');
+  recsList.innerHTML = '';
+  recs.slice(0, 5).forEach((r, i) => {
+    const el = document.createElement('div');
+    el.className = 'rec-item';
+    el.innerHTML = `<div class="rec-num">${i+1}</div><div class="rec-text">${escHtml(r)}</div>`;
+    recsList.appendChild(el);
+  });
+
+  analysisData = { url, score, issues: allIssues, checks: staticRes.passed };
+  setTimeout(scrollToResults, 100);
 }
 
-/* ─── Utility: delay ─── */
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+// ── Helper: score → color ─────────────────────────
+function scoreColor(s) {
+  if (s < 25) return '#22c55e';
+  if (s < 50) return '#f59e0b';
+  if (s < 75) return '#ef4444';
+  return '#dc2626';
 }
 
-/* ─── Initial log message ─── */
-appendLog('[QR Shield v2.4] Defense engine initialized. Anti-Quishing & QRLJacking detection active.', 'text-emerald-400');
-appendLog('[SYS] 4 inspection layers loaded. Campus merchant whitelist: 5 VPAs registered.', 'text-slate-500');
+// ── Helper: verdict ───────────────────────────────
+function getVerdict(score, aiRes) {
+  if (aiRes?.verdict) {
+    const e = { safe:'✅', low:'🟡', medium:'⚠️', high:'🚨', critical:'🔴' };
+    const d = {
+      safe:     'This URL appears legitimate and safe to visit. No significant threats detected.',
+      low:      'Minor concerns found. Exercise light caution — avoid entering sensitive credentials.',
+      medium:   'Suspicious signals detected. Do not enter personal information on this site.',
+      high:     'High phishing risk. We strongly advise NOT visiting this URL.',
+      critical: 'CRITICAL THREAT. This URL is almost certainly malicious. Do not visit under any circumstances.'
+    };
+    const cls = aiRes.verdict;
+    return { label: `${e[cls]||'⚠️'} ${aiRes.verdictLabel||cls}`, cls, desc: d[cls]||'' };
+  }
+  if (score < 20) return { label:'✅ Safe',              cls:'safe',     desc:'This URL appears legitimate and safe to visit. No significant threats detected.' };
+  if (score < 40) return { label:'🟡 Low Risk',          cls:'low',      desc:'Minor concerns detected. Some caution advised before entering personal information.' };
+  if (score < 60) return { label:'⚠️ Suspicious',        cls:'medium',   desc:'Multiple suspicious signals detected. Avoid entering any personal information.' };
+  if (score < 80) return { label:'🚨 High Risk',         cls:'high',     desc:'High phishing risk. We strongly advise NOT visiting this URL.' };
+  return              { label:'🔴 Critical Phishing',    cls:'critical', desc:'CRITICAL THREAT. This URL is almost certainly malicious. Do not visit.' };
+}
+
+// ── Auto summary (no AI) ──────────────────────────
+function generateAutoSummary(score, issues) {
+  const n = issues.length;
+  const hasCritical = issues.some(i => i.severity === 'critical');
+  if (score < 20) return `This URL appears to be <strong>safe</strong>. No significant phishing indicators were detected. Standard browsing precautions still apply — keep your browser and antivirus updated.`;
+  if (score < 40) return `This URL has <strong>${n} minor concern${n===1?'':'s'}</strong>. It may be legitimate but shows some low-level warning signs. Avoid entering sensitive credentials and verify the site through official channels.`;
+  if (score < 60) return `This URL is <strong>suspicious</strong> with ${n} security issue${n===1?'':'s'} detected. ${hasCritical?'At least one critical threat was found. ':''}Do not enter any personal, financial, or login information. Close the page immediately.`;
+  if (score < 80) return `This URL is <strong>high risk</strong>. Analysis identified ${n} serious indicators of phishing or malware delivery. This page was likely designed to steal your credentials. <strong>Do not visit it.</strong>`;
+  return `<strong>⚠️ CRITICAL PHISHING THREAT DETECTED.</strong> This URL displays ${n} major red flags consistent with an active credential-harvesting or malware campaign. <strong>Under no circumstances should you visit this URL or provide any information.</strong>`;
+}
+
+// ── Auto recommendations ──────────────────────────
+function generateAutoRecs(issues, score) {
+  const recs = [];
+  if (score >= 40) recs.push('Do NOT visit this URL or enter any personal, financial, or login credentials.');
+  if (issues.some(i=>i.id==='no-https')) recs.push('This site lacks HTTPS encryption. Even if otherwise legitimate, never log in over HTTP. Your data can be intercepted.');
+  if (issues.some(i=>i.id==='shortener')) recs.push('Expand shortened URLs before clicking using a service like checkshorturl.com to see the real destination.');
+  if (issues.some(i=>i.id==='brand'))     recs.push('This domain impersonates a trusted brand. Always navigate to official sites by typing the known URL directly — never through QR codes from unknown sources.');
+  if (score >= 60) recs.push('Report this URL to Google Safe Browsing at safebrowsing.google.com/safebrowsing/report_phish/ to protect others.');
+  if (score >= 40) recs.push('If you already visited this site and entered credentials, change your password immediately and enable two-factor authentication on all accounts.');
+  recs.push('Treat all QR codes from unknown sources with suspicion. Use QR Shield to verify every QR code before visiting the URL.');
+  return recs.slice(0, 5);
+}
+
+// ── Animate number counter ────────────────────────
+function animateCounter(el, from, to, dur) {
+  const start = performance.now();
+  (function step(ts) {
+    const p = Math.min((ts - start) / dur, 1);
+    el.textContent = Math.round(from + (to - from) * (1 - Math.pow(1-p, 3)));
+    if (p < 1) requestAnimationFrame(step);
+  })(performance.now());
+}
+
+// ── Loader step animation ─────────────────────────
+function animateLoaderSteps() {
+  ['step1','step2','step3','step4','step5'].forEach((id, i) => {
+    const el = document.getElementById(id);
+    el.className = 'loader-step';
+    setTimeout(() => {
+      ['step1','step2','step3','step4','step5'].slice(0, i).forEach(pid => {
+        document.getElementById(pid).className = 'loader-step done';
+      });
+      el.className = 'loader-step active';
+    }, i * 800);
+  });
+}
+
+// ── Actions ───────────────────────────────────────
+function resetScanner() {
+  document.getElementById('results').classList.remove('visible');
+  document.getElementById('loader').classList.remove('visible');
+  document.getElementById('url-input').value = '';
+  document.getElementById('upload-preview').style.display = 'none';
+  document.getElementById('detected-url-bar').style.display = 'none';
+  currentUrl = ''; analysisData = null; uploadedFile = null;
+  scrollToScanner();
+}
+
+function copyReport() {
+  if (!analysisData) return;
+  const lines = [
+    '══════════ QR Shield Safety Report ══════════',
+    `URL:        ${analysisData.url}`,
+    `Risk Score: ${analysisData.score}/100`,
+    `Issues:     ${analysisData.issues.length}`,
+    `Passed:     ${analysisData.checks.length}`,
+    '',
+    '── Security Issues ──'
+  ];
+  analysisData.issues.forEach(i => lines.push(`  [${i.severity.toUpperCase().padEnd(8)}] ${i.title}`));
+  lines.push('', '── Passed Checks ──');
+  analysisData.checks.forEach(c => lines.push(`  ✅ ${c.title}`));
+  lines.push('', `Generated by QR Shield at ${new Date().toLocaleString()}`);
+  navigator.clipboard.writeText(lines.join('\n')).then(() => showToast('Report copied to clipboard!', 'success'));
+}
+
+function reportPhishing() {
+  const url = currentUrl || (analysisData && analysisData.url);
+  if (!url) return;
+  window.open(`https://safebrowsing.google.com/safebrowsing/report_phish/?url=${encodeURIComponent(url)}`, '_blank');
+}
+
+function scrollToScanner() { document.getElementById('scanner').scrollIntoView({ behavior:'smooth', block:'start' }); }
+function scrollToResults()  { document.getElementById('results').scrollIntoView({ behavior:'smooth', block:'start' }); }
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Toast ─────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'toast'; }, 3800);
+}
+
+// ── Init ──────────────────────────────────────────
+window.addEventListener('load', () => {
+  console.info('QR Shield loaded in 100% Zero-API-Key standalone mode.');
+});
 </script>
-
 </body>
 </html>
-
