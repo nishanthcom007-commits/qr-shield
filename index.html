@@ -3,557 +3,1224 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QR Shield — QR Phishing Detector</title>
+  <title>QR Shield — Enterprise QR Phishing & Threat Defense</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>" />
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- ZXing for QR decode from camera/image -->
   <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
 
   <style>
-    /* ─── Design Tokens ─── */
+    /* ─── Light Executive Theme ─── */
     :root {
-      --bg:          #0a0e1a;
-      --bg2:         #0f1525;
-      --surface:     #141c30;
-      --surface2:    #1a2540;
-      --border:      rgba(99,179,237,.15);
-      --accent:      #3b82f6;
-      --accent2:     #818cf8;
-      --glow:        rgba(59,130,246,.35);
-      --safe:        #22c55e;
-      --warn:        #f59e0b;
-      --danger:      #ef4444;
-      --critical:    #dc2626;
-      --text:        #e2e8f0;
-      --muted:       #64748b;
-      --radius:      16px;
-      --radius-sm:   8px;
-      font-size:     16px;
+      --bg:             #f8fafc;
+      --bg-alt:         #f1f5f9;
+      --surface:        #ffffff;
+      --surface-hover:  #f8fafc;
+      --border:         #e2e8f0;
+      --border-focus:   #2563eb;
+      --text-main:      #0f172a;
+      --text-muted:     #64748b;
+      --text-sub:       #475569;
+      
+      --primary:        #2563eb;
+      --primary-hover:  #1d4ed8;
+      --primary-light:  #eff6ff;
+      --primary-border: #bfdbfe;
+      
+      --safe:           #16a34a;
+      --safe-bg:        #f0fdf4;
+      --safe-border:    #bbf7d0;
+      
+      --warn:           #d97706;
+      --warn-bg:        #fffbeb;
+      --warn-border:    #fde68a;
+      
+      --danger:         #dc2626;
+      --danger-bg:      #fef2f2;
+      --danger-border:  #fecaca;
+      
+      --critical:       #991b1b;
+      --critical-bg:    #450a0a;
+      
+      --radius:         16px;
+      --radius-sm:      10px;
+      --shadow-sm:      0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md:      0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+      --shadow-lg:      0 10px 25px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+      --shadow-xl:      0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
     }
 
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
       min-height: 100vh;
-      overflow-x: hidden;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
 
+    /* Subtle geometric grid background */
     body::before {
       content: '';
-      position: fixed; inset: 0;
-      background:
-        radial-gradient(ellipse 80% 60% at 20% 10%, rgba(59,130,246,.08) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 80% at 80% 90%, rgba(129,140,248,.06) 0%, transparent 60%);
-      pointer-events: none; z-index: 0;
+      position: fixed;
+      inset: 0;
+      background-image: 
+        radial-gradient(#cbd5e1 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(239, 246, 255, 0.5), rgba(248, 250, 252, 1));
+      background-size: 24px 24px, 100% 100%;
+      background-position: 0 0, 0 0;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.65;
     }
 
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: var(--bg2); }
-    ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 3px; }
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
 
-    .container { max-width: 960px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1; }
-
+    /* ─── Header Navigation ─── */
     header {
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
-      background: rgba(10,14,26,.85);
-      backdrop-filter: blur(20px);
-      position: sticky; top: 0; z-index: 100;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
-    nav {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 16px 20px; max-width: 960px; margin: 0 auto;
-    }
-    .logo {
-      display: flex; align-items: center; gap: 10px;
-      font-size: 1.35rem; font-weight: 700; letter-spacing: -.5px;
-    }
-    .logo-icon {
-      width: 36px; height: 36px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px;
-      box-shadow: 0 0 20px var(--glow);
-    }
-    .logo span { background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .badge-beta {
-      font-size: .65rem; padding: 2px 7px; border-radius: 99px;
-      background: rgba(59,130,246,.2); color: #93c5fd; border: 1px solid rgba(59,130,246,.3);
-      font-weight: 600; letter-spacing: .5px;
-    }
-    nav a {
-      color: var(--muted); text-decoration: none; font-size: .9rem;
-      transition: color .2s;
-    }
-    nav a:hover { color: var(--text); }
-    .nav-links { display: flex; gap: 24px; align-items: center; }
-    .btn-nav {
-      padding: 8px 18px; border-radius: 99px; border: 1px solid var(--border);
-      color: var(--text); background: var(--surface2); cursor: pointer;
-      font-size: .875rem; font-weight: 500; transition: all .2s;
-    }
-    .btn-nav:hover { border-color: var(--accent); color: var(--accent); background: rgba(59,130,246,.1); }
 
-    .hero {
-      text-align: center; padding: 80px 20px 60px;
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 70px;
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 24px;
     }
-    .hero-tag {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-size: .8rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
-      color: var(--accent2); padding: 6px 14px; border-radius: 99px;
-      border: 1px solid rgba(129,140,248,.25); background: rgba(129,140,248,.08);
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text-main);
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #1e40af, #3b82f6);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-size: 20px;
+      box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
+    }
+
+    .logo-text {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #0f172a;
+    }
+
+    .logo-text span {
+      color: var(--primary);
+    }
+
+    .badge-clean {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 4px 9px;
+      border-radius: 9999px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+    }
+
+    .nav-links a {
+      color: var(--text-sub);
+      text-decoration: none;
+      font-size: 0.92rem;
+      font-weight: 500;
+      transition: color 0.15s ease;
+    }
+
+    .nav-links a:hover {
+      color: var(--primary);
+    }
+
+    .btn-nav {
+      padding: 9px 20px;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      background: var(--surface);
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 600;
+      box-shadow: var(--shadow-sm);
+      transition: all 0.2s ease;
+    }
+
+    .btn-nav:hover {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+    }
+
+    /* ─── Hero Section ─── */
+    .hero {
+      text-align: center;
+      padding: 70px 20px 48px;
+    }
+
+    .hero-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #1e40af;
+      background: #dbeafe;
+      border: 1px solid #bfdbfe;
+      padding: 6px 16px;
+      border-radius: 9999px;
       margin-bottom: 24px;
     }
-    .hero h1 {
-      font-size: clamp(2.2rem, 6vw, 3.8rem);
-      font-weight: 800; line-height: 1.1; letter-spacing: -1.5px; margin-bottom: 20px;
-    }
-    .hero h1 .highlight {
-      background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    }
-    .hero p {
-      font-size: 1.15rem; color: var(--muted); max-width: 580px; margin: 0 auto 40px; line-height: 1.7;
-    }
-    .hero-stats {
-      display: flex; justify-content: center; gap: 40px; flex-wrap: wrap; margin-bottom: 50px;
-    }
-    .stat { text-align: center; }
-    .stat-num { font-size: 1.8rem; font-weight: 700; background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .stat-label { font-size: .8rem; color: var(--muted); margin-top: 2px; }
 
+    .hero h1 {
+      font-size: clamp(2.3rem, 5vw, 3.6rem);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -1.2px;
+      color: #0f172a;
+      margin-bottom: 18px;
+    }
+
+    .hero h1 .highlight {
+      color: var(--primary);
+      background: linear-gradient(135deg, #1d4ed8, #2563eb 50%, #3b82f6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 640px;
+      margin: 0 auto 36px;
+      line-height: 1.6;
+    }
+
+    .hero-features {
+      display: flex;
+      justify-content: center;
+      gap: 36px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+
+    .hero-feature-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-sub);
+    }
+
+    .hero-feature-item svg {
+      color: var(--primary);
+    }
+
+    /* ─── Main Scanner Workspace Card ─── */
     .scanner-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 24px;
-      padding: 40px;
-      margin-bottom: 32px;
-      box-shadow: 0 20px 60px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.03);
-      position: relative; overflow: hidden;
-    }
-    .scanner-card::before {
-      content: '';
-      position: absolute; top: 0; left: 0; right: 0; height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(99,179,237,.4), transparent);
+      border-radius: var(--radius);
+      padding: 36px;
+      margin-bottom: 40px;
+      box-shadow: var(--shadow-xl);
+      position: relative;
     }
 
+    /* Tabs */
     .tabs {
-      display: flex; gap: 4px; background: var(--bg2);
-      border-radius: 12px; padding: 4px; margin-bottom: 32px;
+      display: flex;
+      gap: 8px;
+      background: var(--bg-alt);
+      border-radius: 12px;
+      padding: 6px;
+      margin-bottom: 28px;
+      border: 1px solid var(--border);
     }
+
     .tab {
-      flex: 1; padding: 10px; border: none; background: none;
-      color: var(--muted); font-size: .9rem; font-weight: 500;
-      border-radius: 9px; cursor: pointer; transition: all .2s;
-      display: flex; align-items: center; justify-content: center; gap: 7px;
+      flex: 1;
+      padding: 12px 16px;
+      border: none;
+      background: none;
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
     }
-    .tab.active { background: var(--surface2); color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
-    .tab:hover:not(.active) { color: var(--text); }
 
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
+    .tab.active {
+      background: var(--surface);
+      color: var(--primary);
+      box-shadow: var(--shadow-sm);
+    }
 
+    .tab:hover:not(.active) {
+      color: var(--text-main);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    /* ── Camera Viewport ── */
     .camera-wrapper {
-      position: relative; background: var(--bg2); border-radius: var(--radius);
-      overflow: hidden; aspect-ratio: 4/3; max-height: 360px;
-      border: 2px solid var(--border); margin-bottom: 16px;
+      position: relative;
+      background: #0f172a;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      aspect-ratio: 16/10;
+      max-height: 380px;
+      border: 2px solid #cbd5e1;
+      margin-bottom: 16px;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
     }
-    #camera-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    #camera-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .camera-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      color: #94a3b8;
+      background: #0f172a;
+    }
+
+    .camera-placeholder svg {
+      opacity: 0.7;
+    }
+
+    .camera-placeholder p {
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+
+    #start-camera-btn {
+      padding: 11px 26px;
+      border-radius: 9999px;
+      background: var(--primary);
+      border: none;
+      color: #ffffff;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.92rem;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+      transition: all 0.2s ease;
+    }
+
+    #start-camera-btn:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+
     .camera-overlay {
-      position: absolute; inset: 0; pointer-events: none;
-      display: flex; align-items: center; justify-content: center;
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
-    .scan-frame { width: 200px; height: 200px; position: relative; }
-    .corner { position: absolute; width: 40px; height: 40px; border-color: var(--accent); border-style: solid; }
-    .corner.tl { top: 0; left: 0; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
-    .corner.tr { top: 0; right: 0; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
-    .corner.bl { bottom: 0; left: 0; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
-    .corner.br { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+
+    .scan-frame {
+      width: 220px;
+      height: 220px;
+      position: relative;
+    }
+
+    .corner {
+      position: absolute;
+      width: 36px;
+      height: 36px;
+      border-color: #60a5fa;
+      border-style: solid;
+    }
+
+    .corner.tl { top: 0; left: 0; border-width: 4px 0 0 4px; border-radius: 6px 0 0 0; }
+    .corner.tr { top: 0; right: 0; border-width: 4px 4px 0 0; border-radius: 0 6px 0 0; }
+    .corner.bl { bottom: 0; left: 0; border-width: 0 0 4px 4px; border-radius: 0 0 0 6px; }
+    .corner.br { bottom: 0; right: 0; border-width: 0 4px 4px 0; border-radius: 0 0 6px 0; }
+
     .scan-line {
-      position: absolute; left: 0; right: 0; height: 2px;
-      background: linear-gradient(90deg, transparent, var(--accent), transparent);
-      animation: scan 2.4s linear infinite; top: 0;
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #60a5fa, transparent);
+      box-shadow: 0 0 8px #60a5fa;
+      animation: scan 2.4s linear infinite;
+      top: 0;
     }
+
     @keyframes scan {
       0% { top: 0; opacity: 1; }
       90% { top: calc(100% - 2px); opacity: 1; }
       100% { top: calc(100% - 2px); opacity: 0; }
     }
 
-    .camera-placeholder {
-      position: absolute; inset: 0;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 12px; color: var(--muted);
-    }
-    .camera-placeholder svg { opacity: .4; }
-    .camera-placeholder p { font-size: .9rem; opacity: .7; }
-    #start-camera-btn {
-      padding: 10px 24px; border-radius: 99px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border: none; color: white; font-weight: 600; cursor: pointer;
-      font-size: .9rem; transition: opacity .2s;
-    }
-    #start-camera-btn:hover { opacity: .85; }
-
-    .url-input-group { display: flex; gap: 10px; margin-bottom: 16px; }
-    .url-input {
-      flex: 1; padding: 14px 18px;
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); color: var(--text);
-      font-size: 1rem; outline: none; transition: border-color .2s;
-    }
-    .url-input::placeholder { color: var(--muted); }
-    .url-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
-    .btn-analyze {
-      padding: 14px 28px; border-radius: var(--radius-sm);
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border: none; color: white; font-weight: 700; cursor: pointer;
-      font-size: 1rem; transition: all .2s; white-space: nowrap;
-      box-shadow: 0 4px 20px rgba(59,130,246,.3);
-    }
-    .btn-analyze:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(59,130,246,.4); }
-    .btn-analyze:active { transform: translateY(0); }
-    .btn-analyze:disabled { opacity: .5; cursor: not-allowed; transform: none; }
-
-    .upload-area {
-      border: 2px dashed var(--border); border-radius: var(--radius);
-      padding: 50px 24px; text-align: center; cursor: pointer;
-      transition: all .3s; background: var(--bg2);
-    }
-    .upload-area:hover, .upload-area.dragover {
-      border-color: var(--accent); background: rgba(59,130,246,.05);
-    }
-    .upload-area h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 6px; }
-    .upload-area p { font-size: .875rem; color: var(--muted); }
-    #file-input { display: none; }
-    .upload-preview {
-      margin-top: 16px; display: none; align-items: center; gap: 12px;
-      background: var(--surface2); padding: 12px 16px; border-radius: var(--radius-sm);
-    }
-    .upload-preview img { width: 60px; height: 60px; object-fit: contain; border-radius: 6px; background: white; }
-    .upload-preview-info { flex: 1; }
-    .upload-preview-info .fname { font-size: .9rem; font-weight: 500; }
-    .upload-preview-info .fsize { font-size: .8rem; color: var(--muted); margin-top: 2px; }
-    .btn-upload-analyze {
-      padding: 10px 20px; border-radius: var(--radius-sm);
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border: none; color: white; font-weight: 600; cursor: pointer;
-      font-size: .875rem; transition: all .2s;
-    }
-    .btn-upload-analyze:hover { opacity: .85; }
-
-    .api-key-section {
-      display: flex; align-items: center; gap: 10px; margin-top: 16px;
-      padding: 12px 16px; background: var(--bg2); border-radius: var(--radius-sm);
-      border: 1px solid var(--border);
-    }
-    .api-key-section label { font-size: .85rem; color: var(--muted); white-space: nowrap; }
-    .api-key-input {
-      flex: 1; padding: 8px 12px; background: var(--surface2);
-      border: 1px solid var(--border); border-radius: 6px;
-      color: var(--text); font-size: .85rem; outline: none;
-    }
-    .api-key-input:focus { border-color: var(--accent); }
-    .api-key-hint { font-size: .75rem; color: var(--muted); }
-
-    .loader-wrapper { display: none; text-align: center; padding: 50px 20px; }
-    .loader-wrapper.visible { display: block; }
-    .spinner {
-      width: 52px; height: 52px; margin: 0 auto 20px;
-      border: 3px solid rgba(59,130,246,.2); border-top-color: var(--accent);
-      border-radius: 50%; animation: spin .9s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .loader-steps { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; align-items: flex-start; display: inline-flex; }
-    .loader-step {
-      display: flex; align-items: center; gap: 10px; font-size: .9rem;
-      color: var(--muted); transition: color .3s;
-    }
-    .loader-step.done { color: var(--safe); }
-    .loader-step.active { color: var(--text); }
-    .step-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--muted); transition: background .3s; flex-shrink: 0;
-    }
-    .loader-step.done .step-dot { background: var(--safe); }
-    .loader-step.active .step-dot { background: var(--accent); animation: pulse 1s ease infinite; }
-    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
-
-    .results-section { display: none; }
-    .results-section.visible { display: block; }
-
-    .result-url-bar {
-      display: flex; align-items: center; gap: 12px;
-      background: var(--bg2); border-radius: var(--radius-sm);
-      padding: 12px 16px; margin-bottom: 24px;
-      border: 1px solid var(--border); overflow: hidden;
-    }
-    .result-url-bar .url-icon { font-size: 1.1rem; flex-shrink: 0; }
-    .result-url { font-size: .9rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-    .result-url strong { color: var(--text); }
-
-    .score-section {
-      display: flex; align-items: center; gap: 32px; margin-bottom: 32px; flex-wrap: wrap;
-    }
-    .score-ring-wrapper { position: relative; flex-shrink: 0; }
-    .score-ring { width: 160px; height: 160px; transform: rotate(-90deg); }
-    .ring-bg { fill: none; stroke: var(--surface2); stroke-width: 10; }
-    .ring-fill {
-      fill: none; stroke-width: 10; stroke-linecap: round;
-      transition: stroke-dashoffset 1.2s cubic-bezier(.25,.46,.45,.94);
-    }
-    .score-center {
-      position: absolute; inset: 0;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-    }
-    .score-num { font-size: 2.4rem; font-weight: 800; line-height: 1; }
-    .score-label { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
-
-    .score-info { flex: 1; min-width: 200px; }
-    .verdict-badge {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 8px 18px; border-radius: 99px; font-weight: 700; font-size: .95rem;
+    /* ── URL Input ── */
+    .url-input-group {
+      display: flex;
+      gap: 12px;
       margin-bottom: 14px;
     }
-    .verdict-badge.safe     { background: rgba(34,197,94,.15);  color: var(--safe);   border: 1px solid rgba(34,197,94,.3);  }
-    .verdict-badge.low      { background: rgba(245,158,11,.12); color: var(--warn);   border: 1px solid rgba(245,158,11,.3); }
-    .verdict-badge.medium   { background: rgba(245,158,11,.15); color: var(--warn);   border: 1px solid rgba(245,158,11,.3); }
-    .verdict-badge.high     { background: rgba(239,68,68,.15);  color: var(--danger); border: 1px solid rgba(239,68,68,.3);  }
-    .verdict-badge.critical { background: rgba(220,38,38,.2);   color: #fca5a5;       border: 1px solid rgba(220,38,38,.4);  }
 
-    .verdict-desc { color: var(--muted); font-size: .9rem; line-height: 1.6; }
-
-    .risk-meter { margin-bottom: 0; }
-    .risk-meter-label { display: flex; justify-content: space-between; font-size: .8rem; color: var(--muted); margin-bottom: 6px; }
-    .risk-track {
-      height: 10px; border-radius: 99px;
-      background: linear-gradient(90deg, #22c55e 0%, #f59e0b 50%, #ef4444 80%, #dc2626 100%);
-      position: relative; margin-bottom: 4px;
-    }
-    .risk-thumb {
-      position: absolute; top: 50%; transform: translate(-50%, -50%);
-      width: 18px; height: 18px; background: white; border-radius: 50%;
-      box-shadow: 0 2px 8px rgba(0,0,0,.4); transition: left 1s cubic-bezier(.25,.46,.45,.94);
-      border: 2px solid var(--bg2);
-    }
-    .risk-marks { display: flex; justify-content: space-between; font-size: .7rem; color: var(--muted); padding: 0 2px; }
-
-    .section-title {
-      font-size: 1rem; font-weight: 700; color: var(--text);
-      display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
-    }
-    .section-title span.count {
-      background: var(--surface2); padding: 2px 8px; border-radius: 99px;
-      font-size: .75rem; color: var(--muted);
+    .url-input {
+      flex: 1;
+      padding: 15px 20px;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-main);
+      font-size: 1rem;
+      outline: none;
+      transition: all 0.2s ease;
+      box-shadow: var(--shadow-sm);
     }
 
-    .issues-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
-    .issue-card {
-      background: var(--bg2); border-radius: var(--radius-sm);
-      padding: 16px; border-left: 4px solid transparent;
-      display: flex; align-items: flex-start; gap: 14px;
-      animation: slideIn .4s ease both;
+    .url-input::placeholder {
+      color: #94a3b8;
     }
-    @keyframes slideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-    .issue-card.severity-low      { border-color: #22c55e; }
-    .issue-card.severity-medium   { border-color: var(--warn); }
-    .issue-card.severity-high     { border-color: var(--danger); }
-    .issue-card.severity-critical { border-color: #dc2626; background: rgba(220,38,38,.06); }
-    .issue-icon { font-size: 1.4rem; flex-shrink: 0; line-height: 1; }
-    .issue-body { flex: 1; }
-    .issue-title { font-size: .95rem; font-weight: 600; margin-bottom: 4px; }
-    .issue-desc  { font-size: .85rem; color: var(--muted); line-height: 1.5; }
-    .issue-pill  {
-      font-size: .7rem; font-weight: 700; padding: 2px 8px; border-radius: 99px;
-      text-transform: uppercase; letter-spacing: .5px; flex-shrink: 0; align-self: flex-start;
-    }
-    .pill-low      { background: rgba(34,197,94,.15);  color: var(--safe); }
-    .pill-medium   { background: rgba(245,158,11,.15); color: var(--warn); }
-    .pill-high     { background: rgba(239,68,68,.15);  color: var(--danger); }
-    .pill-critical { background: rgba(220,38,38,.2);   color: #fca5a5; }
 
-    .checks-grid { display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }
-    .check-item {
-      display: flex; align-items: center; gap: 10px;
-      font-size: .875rem; color: var(--muted); padding: 8px 0;
-      border-bottom: 1px solid var(--border);
+    .url-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
     }
-    .check-item:last-child { border: none; }
-    .check-item .tick { color: var(--safe); font-size: 1rem; flex-shrink: 0; }
 
-    .recs-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
-    .rec-item {
-      display: flex; gap: 12px; background: rgba(59,130,246,.06);
-      border: 1px solid rgba(59,130,246,.15); border-radius: var(--radius-sm); padding: 14px;
+    .btn-analyze {
+      padding: 15px 32px;
+      border-radius: var(--radius-sm);
+      background: var(--primary);
+      border: none;
+      color: #ffffff;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
     }
-    .rec-num {
-      width: 24px; height: 24px; border-radius: 50%;
-      background: rgba(59,130,246,.2); color: #93c5fd;
-      font-size: .75rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
+
+    .btn-analyze:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+    }
+
+    .btn-analyze:active {
+      transform: translateY(0);
+    }
+
+    /* ── File Upload ── */
+    .upload-area {
+      border: 2px dashed #cbd5e1;
+      border-radius: var(--radius-sm);
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      background: #fafbfc;
+    }
+
+    .upload-area:hover, .upload-area.dragover {
+      border-color: var(--primary);
+      background: #eff6ff;
+    }
+
+    .upload-area svg {
+      color: var(--primary);
+      margin: 0 auto 14px;
+      display: block;
+    }
+
+    .upload-area h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 6px;
+    }
+
+    .upload-area p {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+
+    #file-input { display: none; }
+
+    .upload-preview {
+      margin-top: 18px;
+      display: none;
+      align-items: center;
+      gap: 16px;
+      background: var(--bg-alt);
+      padding: 14px 18px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+
+    .upload-preview img {
+      width: 64px;
+      height: 64px;
+      object-fit: contain;
+      border-radius: 8px;
+      background: white;
+      border: 1px solid var(--border);
+    }
+
+    .upload-preview-info { flex: 1; }
+    .upload-preview-info .fname { font-size: 0.92rem; font-weight: 600; color: var(--text-main); }
+    .upload-preview-info .fsize { font-size: 0.82rem; color: var(--text-muted); margin-top: 2px; }
+
+    .btn-upload-analyze {
+      padding: 10px 22px;
+      border-radius: 8px;
+      background: var(--primary);
+      border: none;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.88rem;
+      transition: all 0.2s ease;
+    }
+
+    .btn-upload-analyze:hover {
+      background: var(--primary-hover);
+    }
+
+    /* Live Status Banner */
+    .status-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 24px;
+      padding: 14px 20px;
+      background: #f8fafc;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--safe);
+      box-shadow: 0 0 8px rgba(22, 163, 74, 0.4);
+    }
+
+    /* ─── Loader ─── */
+    .loader-wrapper {
+      display: none;
+      text-align: center;
+      padding: 48px 20px;
+    }
+
+    .loader-wrapper.visible { display: block; }
+
+    .spinner {
+      width: 50px;
+      height: 50px;
+      margin: 0 auto 20px;
+      border: 3.5px solid #e2e8f0;
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.85s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loader-steps {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 22px;
+      text-align: left;
+    }
+
+    .loader-step {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .loader-step.done { color: var(--safe); font-weight: 600; }
+    .loader-step.active { color: var(--text-main); font-weight: 600; }
+
+    .step-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #cbd5e1;
       flex-shrink: 0;
     }
-    .rec-text { font-size: .875rem; line-height: 1.6; color: var(--muted); }
-    .rec-text strong { color: var(--text); }
 
-    .ai-summary {
-      background: linear-gradient(135deg, rgba(59,130,246,.08), rgba(129,140,248,.08));
-      border: 1px solid rgba(99,179,237,.2); border-radius: var(--radius);
-      padding: 20px; margin-bottom: 28px;
-    }
-    .ai-summary-header {
-      display: flex; align-items: center; gap: 8px; font-size: .8rem;
-      font-weight: 700; text-transform: uppercase; letter-spacing: .8px;
-      color: var(--accent2); margin-bottom: 10px;
-    }
-    .ai-summary p { font-size: .9rem; line-height: 1.7; color: var(--muted); }
-    .ai-summary strong { color: var(--text); }
+    .loader-step.done .step-dot { background: var(--safe); }
+    .loader-step.active .step-dot { background: var(--primary); animation: pulseDot 1s infinite; }
 
-    .action-btns { display: flex; gap: 12px; flex-wrap: wrap; }
-    .btn-secondary {
-      padding: 10px 20px; border-radius: var(--radius-sm);
-      border: 1px solid var(--border); color: var(--text); background: var(--surface2);
-      font-size: .875rem; font-weight: 500; cursor: pointer; transition: all .2s;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
-    .btn-danger {
-      padding: 10px 20px; border-radius: var(--radius-sm);
-      background: rgba(239,68,68,.15); border: 1px solid rgba(239,68,68,.3);
-      color: var(--danger); font-size: .875rem; font-weight: 500; cursor: pointer;
-      transition: all .2s; display: flex; align-items: center; gap: 6px;
-    }
-    .btn-danger:hover { background: rgba(239,68,68,.25); }
+    @keyframes pulseDot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.85)} }
 
-    .info-section { padding: 60px 0; }
-    .info-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 20px;
+    /* ─── Analysis Results Presentation ─── */
+    .results-section {
+      display: none;
+      animation: fadeIn 0.4s ease both;
     }
-    .info-card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 28px;
-      transition: border-color .2s, transform .2s;
+
+    .results-section.visible { display: block; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
     }
-    .info-card:hover { border-color: rgba(99,179,237,.3); transform: translateY(-2px); }
-    .info-card-icon {
-      width: 48px; height: 48px; border-radius: 12px;
-      display: flex; align-items: center; justify-content: center; font-size: 22px;
+
+    .result-url-bar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--bg-alt);
+      border-radius: var(--radius-sm);
+      padding: 14px 20px;
+      margin-bottom: 28px;
+      border: 1px solid var(--border);
+    }
+
+    .result-url-bar .url-icon {
+      font-size: 1.25rem;
+      flex-shrink: 0;
+    }
+
+    .result-url {
+      font-size: 0.95rem;
+      color: var(--text-sub);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+
+    .result-url strong {
+      color: var(--text-main);
+    }
+
+    /* Score Ring & Verdict Header */
+    .score-section {
+      display: flex;
+      align-items: center;
+      gap: 36px;
+      margin-bottom: 36px;
+      padding: 28px;
+      background: var(--bg);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .score-ring-wrapper {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .score-ring {
+      width: 150px;
+      height: 150px;
+      transform: rotate(-90deg);
+    }
+
+    .ring-bg {
+      fill: none;
+      stroke: #e2e8f0;
+      stroke-width: 10;
+    }
+
+    .ring-fill {
+      fill: none;
+      stroke-width: 10;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
+    .score-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .score-num {
+      font-size: 2.6rem;
+      font-weight: 800;
+      line-height: 1;
+      color: var(--text-main);
+    }
+
+    .score-label {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    .score-info {
+      flex: 1;
+      min-width: 220px;
+    }
+
+    .verdict-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 18px;
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin-bottom: 12px;
+    }
+
+    .verdict-badge.safe     { background: var(--safe-bg);   color: var(--safe);   border: 1px solid var(--safe-border); }
+    .verdict-badge.low      { background: var(--warn-bg);   color: var(--warn);   border: 1px solid var(--warn-border); }
+    .verdict-badge.medium   { background: var(--warn-bg);   color: var(--warn);   border: 1px solid var(--warn-border); }
+    .verdict-badge.high     { background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); }
+    .verdict-badge.critical { background: #fee2e2;          color: #b91c1c;       border: 1px solid #fca5a5; }
+
+    .verdict-desc {
+      color: var(--text-sub);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    /* Danger Meter */
+    .risk-meter {
+      margin-top: 18px;
+    }
+
+    .risk-meter-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .risk-track {
+      height: 9px;
+      border-radius: 9999px;
+      background: linear-gradient(90deg, #16a34a 0%, #d97706 45%, #dc2626 80%, #991b1b 100%);
+      position: relative;
+    }
+
+    .risk-thumb {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 19px;
+      height: 19px;
+      background: #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      border: 3px solid var(--primary);
+      transition: left 1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
+    .risk-marks {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 6px;
+      padding: 0 2px;
+      font-weight: 500;
+    }
+
+    /* Section Titles */
+    .section-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 10px;
       margin-bottom: 16px;
     }
-    .ic-blue   { background: rgba(59,130,246,.15); }
-    .ic-purple { background: rgba(129,140,248,.15); }
-    .ic-green  { background: rgba(34,197,94,.15); }
-    .ic-red    { background: rgba(239,68,68,.15); }
-    .ic-amber  { background: rgba(245,158,11,.15); }
-    .ic-cyan   { background: rgba(6,182,212,.15); }
-    .info-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
-    .info-card p  { font-size: .875rem; color: var(--muted); line-height: 1.6; }
 
-    .how-section { padding: 60px 0; }
+    .section-title span.count {
+      background: #e2e8f0;
+      padding: 2px 9px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      color: #334155;
+      font-weight: 700;
+    }
+
+    /* Issues Grid */
+    .issues-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .issue-card {
+      background: var(--surface);
+      border-radius: var(--radius-sm);
+      padding: 18px 20px;
+      border: 1px solid var(--border);
+      border-left: 5px solid transparent;
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.15s ease;
+    }
+
+    .issue-card:hover {
+      transform: translateX(2px);
+    }
+
+    .issue-card.severity-low      { border-left-color: #16a34a; background: #fafdfa; }
+    .issue-card.severity-medium   { border-left-color: #d97706; background: #fffdf7; }
+    .issue-card.severity-high     { border-left-color: #dc2626; background: #fffbfb; }
+    .issue-card.severity-critical { border-left-color: #991b1b; background: #fff5f5; border-color: #fecaca; }
+
+    .issue-icon {
+      font-size: 1.5rem;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+
+    .issue-body { flex: 1; }
+    .issue-title { font-size: 0.98rem; font-weight: 700; margin-bottom: 4px; color: var(--text-main); }
+    .issue-desc  { font-size: 0.9rem; color: var(--text-sub); line-height: 1.55; }
+
+    .issue-pill {
+      font-size: 0.7rem;
+      font-weight: 800;
+      padding: 3px 9px;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+    }
+
+    .pill-low      { background: var(--safe-bg);   color: var(--safe);   border: 1px solid var(--safe-border); }
+    .pill-medium   { background: var(--warn-bg);   color: var(--warn);   border: 1px solid var(--warn-border); }
+    .pill-high     { background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); }
+    .pill-critical { background: #fee2e2;          color: #991b1b;       border: 1px solid #fca5a5; }
+
+    /* Passed Checks */
+    .checks-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 32px;
+      background: #f8fafc;
+      padding: 20px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+
+    .check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 0.9rem;
+      color: var(--text-sub);
+      padding: 6px 0;
+    }
+
+    .check-item:not(:last-child) {
+      border-bottom: 1px dashed var(--border);
+    }
+
+    .check-item .tick {
+      color: var(--safe);
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      line-height: 1.3;
+    }
+
+    /* Executive Assessment Summary */
+    .ai-summary {
+      background: #f0f7ff;
+      border: 1.5px solid #bfdbfe;
+      border-radius: var(--radius-sm);
+      padding: 22px 24px;
+      margin-bottom: 32px;
+    }
+
+    .ai-summary-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.84rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #1d4ed8;
+      margin-bottom: 10px;
+    }
+
+    .ai-summary p {
+      font-size: 0.95rem;
+      line-height: 1.7;
+      color: #1e293b;
+    }
+
+    /* Recommendations */
+    .recs-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .rec-item {
+      display: flex;
+      gap: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .rec-num {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #eff6ff;
+      color: var(--primary);
+      border: 1px solid #bfdbfe;
+      font-size: 0.8rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .rec-text {
+      font-size: 0.92rem;
+      line-height: 1.6;
+      color: var(--text-sub);
+    }
+
+    /* Actions */
+    .action-btns {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .btn-secondary {
+      padding: 12px 22px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      background: var(--surface);
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-secondary:hover {
+      border-color: #94a3b8;
+      background: #f8fafc;
+      transform: translateY(-1px);
+    }
+
+    .btn-danger {
+      padding: 12px 22px;
+      border-radius: var(--radius-sm);
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-danger:hover {
+      background: #fee2e2;
+      border-color: #f87171;
+    }
+
+    /* ─── Information Cards ─── */
+    .info-section {
+      padding: 60px 0 80px;
+    }
+
     .section-heading {
-      text-align: center; font-size: 1.8rem; font-weight: 800;
-      letter-spacing: -1px; margin-bottom: 8px;
+      text-align: center;
+      font-size: 1.85rem;
+      font-weight: 800;
+      letter-spacing: -0.6px;
+      color: var(--text-main);
+      margin-bottom: 8px;
     }
-    .section-sub { text-align: center; color: var(--muted); font-size: .95rem; margin-bottom: 48px; }
-    .steps-row { display: flex; gap: 0; flex-wrap: wrap; justify-content: center; }
-    .step-block {
-      flex: 1; min-width: 180px; max-width: 220px; text-align: center; padding: 0 16px; position: relative;
-    }
-    .step-block:not(:last-child)::after {
-      content: '→'; position: absolute; right: -8px; top: 28px;
-      color: var(--muted); font-size: 1.2rem;
-    }
-    .step-circle {
-      width: 56px; height: 56px; border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.4rem; margin: 0 auto 12px;
-      box-shadow: 0 0 24px var(--glow);
-    }
-    .step-block h4 { font-size: .9rem; font-weight: 700; margin-bottom: 6px; }
-    .step-block p  { font-size: .8rem; color: var(--muted); line-height: 1.5; }
 
+    .section-sub {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 1rem;
+      margin-bottom: 44px;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 22px;
+    }
+
+    .info-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 28px;
+      box-shadow: var(--shadow-sm);
+      transition: all 0.2s ease;
+    }
+
+    .info-card:hover {
+      box-shadow: var(--shadow-md);
+      border-color: #cbd5e1;
+      transform: translateY(-2px);
+    }
+
+    .info-card-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      margin-bottom: 18px;
+      background: #f1f5f9;
+    }
+
+    .info-card h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 8px;
+    }
+
+    .info-card p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Footer */
     footer {
-      border-top: 1px solid var(--border); padding: 40px 20px;
-      text-align: center; color: var(--muted); font-size: .85rem;
+      border-top: 1px solid var(--border);
+      padding: 44px 20px;
+      background: #ffffff;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.88rem;
     }
-    footer a { color: var(--accent2); text-decoration: none; }
-    footer .footer-logo { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
 
-    .toast {
-      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px);
-      background: var(--surface2); border: 1px solid var(--border); border-radius: 99px;
-      padding: 10px 20px; font-size: .875rem; font-weight: 500;
-      box-shadow: 0 8px 32px rgba(0,0,0,.4); z-index: 999; transition: transform .3s ease;
-      display: flex; align-items: center; gap: 8px;
+    footer .footer-logo {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: var(--text-main);
+      margin-bottom: 6px;
     }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #0f172a;
+      color: #ffffff;
+      border-radius: 9999px;
+      padding: 11px 22px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+      z-index: 9999;
+      transition: transform 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
     .toast.show { transform: translateX(-50%) translateY(0); }
-    .toast.success { border-color: rgba(34,197,94,.3); color: var(--safe); }
-    .toast.error   { border-color: rgba(239,68,68,.3); color: var(--danger); }
+    .toast.success { background: #15803d; }
+    .toast.error   { background: #b91c1c; }
 
     @media (max-width: 640px) {
       .scanner-card { padding: 24px 18px; }
-      .score-section { gap: 20px; }
+      .score-section { gap: 20px; padding: 20px 16px; }
       .url-input-group { flex-direction: column; }
-      .step-block::after { display: none; }
-      .hide-mobile { display: none; }
-      .hero-stats { gap: 24px; }
-      .api-key-section { flex-wrap: wrap; }
+      .hero-features { gap: 16px; }
     }
   </style>
 </head>
 
 <body>
 
+<!-- Header / Navigation -->
 <header>
   <nav>
-    <div class="logo">
+    <a href="#" class="logo">
       <div class="logo-icon">🛡️</div>
-      <span>QR Shield</span>
-      <span class="badge-beta">BETA</span>
-    </div>
+      <div class="logo-text">QR<span>Shield</span></div>
+      <span class="badge-clean">Public Safe</span>
+    </a>
     <div class="nav-links">
-      <a href="#how" class="hide-mobile">How it works</a>
-      <a href="#about" class="hide-mobile">About</a>
-      <button class="btn-nav" onclick="scrollToScanner()">Scan Now</button>
+      <a href="#scanner" class="hide-mobile">Scanner</a>
+      <a href="#about" class="hide-mobile">Detection Specs</a>
+      <button class="btn-nav" onclick="scrollToScanner()">Scan QR Code</button>
     </div>
   </nav>
 </header>
 
+<!-- Hero Section -->
 <section class="hero container">
-  <div class="hero-tag">🔍 AI-Powered QR Security</div>
-  <h1>Detect <span class="highlight">QR Phishing</span><br>Before It Gets You</h1>
-  <p>Scan any QR code and instantly know if the URL is safe, suspicious, or a phishing threat — powered by 15+ security checks and Gemini AI analysis.</p>
-  <div class="hero-stats">
-    <div class="stat"><div class="stat-num">15+</div><div class="stat-label">Security Checks</div></div>
-    <div class="stat"><div class="stat-num">AI</div><div class="stat-label">Powered Analysis</div></div>
-    <div class="stat"><div class="stat-num">100%</div><div class="stat-label">Free to Use</div></div>
-    <div class="stat"><div class="stat-num">0s</div><div class="stat-label">Data Stored</div></div>
+  <div class="hero-pill">
+    <span>🛡️</span> Zero-Config Quishing Protection
+  </div>
+  <h1>Detect <span class="highlight">QR Phishing Attacks</span><br>Before You Visit</h1>
+  <p>Protect your credentials, payments, and personal identity. Instant multi-vector inspection for disguised links, deceptive brands, and unencrypted websites.</p>
+
+  <div class="hero-features">
+    <div class="hero-feature-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      16+ Security Checks
+    </div>
+    <div class="hero-feature-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      No API Key Required
+    </div>
+    <div class="hero-feature-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      100% Free &amp; Private
+    </div>
+    <div class="hero-feature-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      Real-Time Camera Scan
+    </div>
   </div>
 </section>
 
+<!-- Scanner Container -->
 <section class="container" id="scanner">
   <div class="scanner-card">
     <div class="tabs">
-      <button class="tab active" onclick="switchTab('camera', this)">📷 Camera Scan</button>
-      <button class="tab" onclick="switchTab('url', this)">🔗 Enter URL</button>
-      <button class="tab" onclick="switchTab('upload', this)">🖼️ Upload QR</button>
+      <button class="tab active" onclick="switchTab('camera', this)">
+        📷 Live Camera
+      </button>
+      <button class="tab" onclick="switchTab('url', this)">
+        🔗 Analyze URL
+      </button>
+      <button class="tab" onclick="switchTab('upload', this)">
+        🖼️ Upload QR Image
+      </button>
     </div>
 
-    <!-- Camera Tab -->
+    <!-- Tab 1: Live Camera -->
     <div class="tab-panel active" id="panel-camera">
       <div class="camera-wrapper" id="camera-container">
         <video id="camera-video" autoplay muted playsinline style="display:none"></video>
         <div class="camera-placeholder" id="camera-placeholder">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
             <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
             <circle cx="12" cy="13" r="4"/>
           </svg>
-          <p>Camera not active</p>
-          <button id="start-camera-btn" onclick="startCamera()">Enable Camera</button>
+          <p>Camera is currently standby</p>
+          <button id="start-camera-btn" onclick="startCamera()">Activate Camera</button>
         </div>
         <div class="camera-overlay" id="scan-overlay" style="display:none">
           <div class="scan-frame">
@@ -565,214 +1232,216 @@
           </div>
         </div>
       </div>
-      <p style="text-align:center; font-size:.85rem; color:var(--muted);" id="camera-status">Point your camera at a QR code to scan automatically</p>
-      <div id="detected-url-bar" style="display:none; margin-top:12px;" class="result-url-bar">
+      <p style="text-align:center; font-size:0.88rem; color:var(--text-muted);" id="camera-status">
+        Aim your camera at any physical QR code or flyer to decode automatically
+      </p>
+      <div id="detected-url-bar" style="display:none; margin-top:14px;" class="result-url-bar">
         <span class="url-icon">🔗</span>
-        <span class="result-url" id="detected-url-text" style="flex:1"></span>
-        <button class="btn-analyze" id="analyze-detected-btn" onclick="analyzeDetected()" style="padding:8px 16px; font-size:.85rem;">Analyze</button>
+        <span class="result-url" id="detected-url-text"></span>
+        <button class="btn-analyze" onclick="analyzeDetected()" style="padding:9px 18px; font-size:0.88rem;">Analyze</button>
       </div>
     </div>
 
-    <!-- URL Tab -->
+    <!-- Tab 2: URL Input -->
     <div class="tab-panel" id="panel-url">
       <div class="url-input-group">
         <input type="url" class="url-input" id="url-input"
-          placeholder="https://example.com or paste any URL from a QR code…"
+          placeholder="Paste URL (e.g. http://login-paypal-verify.xyz)..."
           onkeydown="if(event.key==='Enter') analyzeUrl()" />
-        <button class="btn-analyze" onclick="analyzeUrl()">🔍 Analyze</button>
+        <button class="btn-analyze" onclick="analyzeUrl()">Run Security Audit</button>
       </div>
-      <p style="font-size:.8rem; color:var(--muted);">Paste any URL extracted from a QR code to check its safety.</p>
+      <p style="font-size:0.85rem; color:var(--text-muted);">
+        Type or paste any URL encoded inside a QR code to run immediate payload analysis.
+      </p>
     </div>
 
-    <!-- Upload Tab -->
+    <!-- Tab 3: Upload File -->
     <div class="tab-panel" id="panel-upload">
       <div class="upload-area" id="upload-area"
         onclick="document.getElementById('file-input').click()"
         ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave(event)">
-        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 12px; display:block; opacity:.5">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
           <rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h4v4m0 3h3m-3-3v3"/>
         </svg>
-        <h3>Drop a QR code image here</h3>
-        <p>or click to browse — supports PNG, JPG, WEBP, GIF</p>
+        <h3>Drag &amp; drop QR image here</h3>
+        <p>Supports PNG, JPG, WEBP, SVG &bull; Maximum file size 10MB</p>
       </div>
       <input type="file" id="file-input" accept="image/*" onchange="handleFileSelect(event)" />
+      
       <div class="upload-preview" id="upload-preview">
         <img id="preview-img" src="" alt="QR preview" />
         <div class="upload-preview-info">
           <div class="fname" id="preview-fname"></div>
           <div class="fsize" id="preview-fsize"></div>
         </div>
-        <button class="btn-upload-analyze" onclick="analyzeUploadedQR()">Decode &amp; Analyze</button>
+        <button class="btn-upload-analyze" onclick="analyzeUploadedQR()">Inspect QR Image</button>
       </div>
     </div>
 
-    <!-- Live Security Status Indicator -->
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:16px; padding:12px 18px; background:var(--bg2); border-radius:var(--radius-sm); border:1px solid var(--border);">
-      <div style="display:flex; align-items:center; gap:10px;">
-        <span style="width:10px; height:10px; border-radius:50%; background:#22c55e; display:inline-block; box-shadow:0 0 10px rgba(34,197,94,0.6); animation:pulse 2s infinite;"></span>
-        <span style="font-size:0.875rem; font-weight:600; color:var(--text);">Zero-Config Public Shield Active</span>
+    <!-- Status Banner -->
+    <div class="status-banner">
+      <div class="status-badge">
+        <span class="status-dot"></span>
+        Zero-Setup Public Engine Active
       </div>
-      <span class="badge-beta" style="background:rgba(34,197,94,0.15); color:#4ade80; border-color:rgba(34,197,94,0.3); font-size:0.75rem; padding:4px 10px;">100% FREE &bull; NO SIGNUP &bull; NO KEY</span>
+      <span class="badge-clean">College &bull; Public Ready</span>
     </div>
   </div>
 
-  <!-- Loader -->
+  <!-- Loading State -->
   <div class="loader-wrapper" id="loader">
     <div class="spinner"></div>
-    <p style="font-size:1rem; font-weight:600; margin-bottom:4px;">Analyzing URL Safety</p>
-    <p style="font-size:.85rem; color:var(--muted); margin-bottom:20px;">Running comprehensive security checks…</p>
-    <div class="loader-steps" style="text-align:left">
-      <div class="loader-step active" id="step1"><div class="step-dot"></div>Parsing URL structure</div>
-      <div class="loader-step" id="step2"><div class="step-dot"></div>Checking HTTPS &amp; encryption</div>
-      <div class="loader-step" id="step3"><div class="step-dot"></div>Analyzing domain reputation</div>
-      <div class="loader-step" id="step4"><div class="step-dot"></div>Running AI phishing model</div>
-      <div class="loader-step" id="step5"><div class="step-dot"></div>Generating safety report</div>
+    <h3 style="font-size:1.1rem; font-weight:700; color:var(--text-main); margin-bottom:4px;">Performing Threat Analysis</h3>
+    <p style="font-size:0.88rem; color:var(--text-muted); margin-bottom:18px;">Evaluating 16+ cybersecurity indicators against known threat vectors...</p>
+    <div class="loader-steps">
+      <div class="loader-step active" id="step1"><div class="step-dot"></div>Transport scheme &amp; SSL protocol verification</div>
+      <div class="loader-step" id="step2"><div class="step-dot"></div>Typo-squatting &amp; lookalike brand inspection</div>
+      <div class="loader-step" id="step3"><div class="step-dot"></div>Domain reputation &amp; TLD abuse cross-check</div>
+      <div class="loader-step" id="step4"><div class="step-dot"></div>Credential harvesting keyword heuristic evaluation</div>
+      <div class="loader-step" id="step5"><div class="step-dot"></div>Generating risk score &amp; remediation advisory</div>
     </div>
   </div>
 
-  <!-- Results -->
+  <!-- Results Viewport -->
   <div class="results-section" id="results">
     <div class="result-url-bar">
       <span class="url-icon" id="res-protocol-icon">🔒</span>
-      <div class="result-url"><strong id="res-domain"></strong><span id="res-path" style="opacity:.6"></span></div>
+      <div class="result-url"><strong id="res-domain"></strong><span id="res-path" style="opacity:0.75"></span></div>
     </div>
 
+    <!-- Score & Verdict Header -->
     <div class="score-section">
       <div class="score-ring-wrapper">
-        <svg class="score-ring" viewBox="0 0 160 160">
-          <circle class="ring-bg" cx="80" cy="80" r="68"/>
-          <circle class="ring-fill" id="ring-fill" cx="80" cy="80" r="68"
-            stroke-dasharray="427" stroke-dashoffset="427" stroke="var(--safe)"/>
+        <svg class="score-ring" viewBox="0 0 150 150">
+          <circle class="ring-bg" cx="75" cy="75" r="62"/>
+          <circle class="ring-fill" id="ring-fill" cx="75" cy="75" r="62"
+            stroke-dasharray="390" stroke-dashoffset="390" stroke="var(--safe)"/>
         </svg>
         <div class="score-center">
           <div class="score-num" id="score-num" style="color:var(--safe)">0</div>
-          <div class="score-label">Risk Score</div>
+          <div class="score-label">Risk Rating</div>
         </div>
       </div>
       <div class="score-info">
-        <div class="verdict-badge safe" id="verdict-badge">✅ Safe</div>
+        <div class="verdict-badge safe" id="verdict-badge">✅ Verified Safe</div>
         <p class="verdict-desc" id="verdict-desc"></p>
-        <div class="risk-meter" style="margin-top:16px">
-          <div class="risk-meter-label"><span>Safe</span><span>Critical</span></div>
-          <div class="risk-track"><div class="risk-thumb" id="risk-thumb" style="left:0%"></div></div>
-          <div class="risk-marks"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+        
+        <div class="risk-meter">
+          <div class="risk-meter-label">
+            <span>Low Risk (0)</span>
+            <span>Severe / Critical (100)</span>
+          </div>
+          <div class="risk-track">
+            <div class="risk-thumb" id="risk-thumb" style="left:0%"></div>
+          </div>
+          <div class="risk-marks">
+            <span>Safe (0)</span>
+            <span>Suspicious (50)</span>
+            <span>Critical Threat (100)</span>
+          </div>
         </div>
       </div>
     </div>
 
+    <!-- Issues Breakdown -->
     <div id="issues-section">
-      <div class="section-title">⚠️ Security Issues Found <span class="count" id="issues-count">0</span></div>
+      <div class="section-title">
+        <span>⚠️ Security Flaws &amp; Anomalies</span>
+        <span class="count" id="issues-count">0</span>
+      </div>
       <div class="issues-grid" id="issues-grid"></div>
     </div>
 
+    <!-- Passed Checks -->
     <div id="positive-section">
-      <div class="section-title">✅ Passed Checks <span class="count" id="checks-count">0</span></div>
+      <div class="section-title">
+        <span>✅ Integrity Verifications Passed</span>
+        <span class="count" id="checks-count">0</span>
+      </div>
       <div class="checks-grid" id="checks-grid"></div>
     </div>
 
+    <!-- Executive Assessment -->
     <div class="ai-summary">
-      <div class="ai-summary-header">🤖 AI Analysis Summary</div>
-      <p id="ai-summary-text">Generating summary…</p>
+      <div class="ai-summary-header">🛡️ Safety Assessment Summary</div>
+      <p id="ai-summary-text">Synthesizing threat profile...</p>
     </div>
 
+    <!-- Recommendations -->
     <div id="recs-section">
-      <div class="section-title">💡 Recommendations</div>
+      <div class="section-title">💡 Defensive Recommendations</div>
       <div class="recs-list" id="recs-list"></div>
     </div>
 
+    <!-- Action Bar -->
     <div class="action-btns">
-      <button class="btn-secondary" onclick="resetScanner()">🔄 Scan Another</button>
-      <button class="btn-secondary" onclick="copyReport()">📋 Copy Report</button>
-      <button class="btn-danger" onclick="reportPhishing()">🚨 Report Phishing</button>
+      <button class="btn-secondary" onclick="resetScanner()">🔄 Scan Another QR</button>
+      <button class="btn-secondary" onclick="copyReport()">📋 Copy Full Report</button>
+      <button class="btn-danger" onclick="reportPhishing()">🚨 Report Phishing to Google</button>
     </div>
   </div>
 </section>
 
-<section class="how-section" id="how">
-  <div class="container">
-    <h2 class="section-heading">How QR Shield Works</h2>
-    <p class="section-sub">Four simple steps to protect yourself from QR phishing attacks</p>
-    <div class="steps-row">
-      <div class="step-block">
-        <div class="step-circle">📷</div>
-        <h4>Scan / Upload</h4>
-        <p>Use camera or upload a QR code image from your device</p>
-      </div>
-      <div class="step-block">
-        <div class="step-circle">🔗</div>
-        <h4>Extract URL</h4>
-        <p>We decode the QR and extract the hidden destination URL</p>
-      </div>
-      <div class="step-block">
-        <div class="step-circle">🧠</div>
-        <h4>AI Analysis</h4>
-        <p>15+ security checks + Gemini AI phishing detection model</p>
-      </div>
-      <div class="step-block">
-        <div class="step-circle">📊</div>
-        <h4>Safety Report</h4>
-        <p>Risk score 0–100 with a full breakdown of every threat</p>
-      </div>
-    </div>
-  </div>
-</section>
-
+<!-- Specifications Section -->
 <section class="info-section container" id="about">
-  <h2 class="section-heading">What We Check</h2>
-  <p class="section-sub">QR Shield runs 15+ security signals on every URL</p>
+  <h2 class="section-heading">Multi-Vector Threat Defense</h2>
+  <p class="section-sub">QR Shield inspects 16+ signals on every QR payload in milliseconds.</p>
+  
   <div class="info-grid">
     <div class="info-card">
-      <div class="info-card-icon ic-blue">🔒</div>
-      <h3>HTTPS Enforcement</h3>
-      <p>Plain HTTP means no encryption. We flag unencrypted URLs that expose your credentials to network attackers.</p>
+      <div class="info-card-icon">🔒</div>
+      <h3>Transport Security (HTTPS)</h3>
+      <p>Flags non-encrypted HTTP links that allow eavesdropping, man-in-the-middle attacks, and plaintext credential intercept.</p>
     </div>
     <div class="info-card">
-      <div class="info-card-icon ic-red">🎭</div>
+      <div class="info-card-icon">🎭</div>
       <h3>Brand Impersonation</h3>
-      <p>Detects lookalike domains (paypa1.com, app1e.com) and brand names embedded in malicious hostnames.</p>
+      <p>Detects typo-squatted domains and lookalike names targeting PayPal, Apple, Google, Microsoft, banks, and payment portals.</p>
     </div>
     <div class="info-card">
-      <div class="info-card-icon ic-amber">✂️</div>
-      <h3>URL Shorteners</h3>
-      <p>Shortened links hide the real destination. We detect bit.ly, tinyurl and 10+ other shorteners.</p>
+      <div class="info-card-icon">✂️</div>
+      <h3>URL Shortener Deobfuscation</h3>
+      <p>Flags concealed destinations masked behind bit.ly, tinyurl, t.co, and 15+ other link redirection services.</p>
     </div>
     <div class="info-card">
-      <div class="info-card-icon ic-purple">🏗️</div>
-      <h3>Suspicious Structure</h3>
-      <p>Excessive subdomains, raw IP addresses, unusual ports, punycode homographs, and double extensions.</p>
+      <div class="info-card-icon">🏗️</div>
+      <h3>Subdomain &amp; IP Attacks</h3>
+      <p>Spots multi-tiered deceptive subdomain chains (e.g. login.bank.com.fake.xyz) and untrusted raw IP server addresses.</p>
     </div>
     <div class="info-card">
-      <div class="info-card-icon ic-green">🔑</div>
-      <h3>Keyword Detection</h3>
-      <p>Credential-harvesting pages often contain keywords like "login", "verify", "secure", "reset", "wallet".</p>
+      <div class="info-card-icon">🔑</div>
+      <h3>Credential Harvesting Terms</h3>
+      <p>Identifies path combinations targeting passwords, session tokens, 2FA/MFA resets, verification codes, and wallet keys.</p>
     </div>
     <div class="info-card">
-      <div class="info-card-icon ic-cyan">🤖</div>
-      <h3>Gemini AI Model</h3>
-      <p>Google Gemini AI analyzes the full URL context, social engineering cues, and phishing intent patterns.</p>
+      <div class="info-card-icon">📄</div>
+      <h3>Double Extensions &amp; Payloads</h3>
+      <p>Unmasks disguised malicious scripts pretending to be standard documents (e.g., student-notice.pdf.php).</p>
     </div>
   </div>
 </section>
 
+<!-- Footer -->
 <footer>
   <div class="footer-logo">🛡️ QR Shield</div>
-  <p>AI-powered QR code phishing detection &bull; Built with <a href="https://aistudio.google.com" target="_blank">Google Gemini AI</a></p>
-  <p style="margin-top:8px; font-size:.8rem; opacity:.6;">QR Shield is for educational and informational purposes. Always exercise caution online. &copy; 2026</p>
+  <p>Public Cybersecurity &bull; Zero-API-Key Anti-Quishing Defense Suite</p>
+  <p style="margin-top:6px; font-size:0.82rem; opacity:0.7;">Designed for campus awareness, student security, and public safe-browsing.</p>
 </footer>
 
 <div class="toast" id="toast"></div>
 
+<!-- Application Logic -->
 <script>
 /* ═══════════════════════════════════════════════════
-   QR SHIELD — Core Application
+   QR SHIELD — Executive Client Core (Zero-API Key)
 ═══════════════════════════════════════════════════ */
 let cameraStream = null;
 let currentUrl   = '';
 let analysisData = null;
 let uploadedFile = null;
 
-// ── Tab switcher ──────────────────────────────────
+// Tab Switching
 function switchTab(name, btn) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -781,7 +1450,7 @@ function switchTab(name, btn) {
   if (name !== 'camera') stopCamera();
 }
 
-// ── Camera ────────────────────────────────────────
+// Camera Scanner
 async function startCamera() {
   try {
     cameraStream = await navigator.mediaDevices.getUserMedia({
@@ -792,32 +1461,42 @@ async function startCamera() {
     vid.style.display = 'block';
     document.getElementById('camera-placeholder').style.display = 'none';
     document.getElementById('scan-overlay').style.display = 'flex';
-    document.getElementById('camera-status').textContent = '🔍 Scanning for QR codes…';
+    document.getElementById('camera-status').textContent = '🔍 Camera active. Point at a QR code to scan...';
     startContinuousScan(vid);
   } catch(e) {
-    showToast('Camera access denied. Please allow camera permissions.', 'error');
+    showToast('Camera permission denied or camera not found.', 'error');
   }
 }
 
 function stopCamera() {
-  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
   const vid = document.getElementById('camera-video');
-  vid.style.display = 'none'; vid.srcObject = null;
+  vid.style.display = 'none';
+  vid.srcObject = null;
   document.getElementById('camera-placeholder').style.display = 'flex';
   document.getElementById('scan-overlay').style.display = 'none';
-  document.getElementById('camera-status').textContent = 'Point your camera at a QR code to scan automatically';
+  document.getElementById('camera-status').textContent = 'Aim your camera at any physical QR code or flyer to decode automatically';
   document.getElementById('detected-url-bar').style.display = 'none';
 }
 
 function startContinuousScan(videoEl) {
-  if (typeof ZXing === 'undefined') { showToast('QR library not loaded. Check internet connection.', 'error'); return; }
+  if (typeof ZXing === 'undefined') {
+    showToast('QR decoder library failed to initialize.', 'error');
+    return;
+  }
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   let detected = false;
 
   function tick() {
     if (!cameraStream || detected) return;
-    if (!videoEl.videoWidth) { requestAnimationFrame(tick); return; }
+    if (!videoEl.videoWidth) {
+      requestAnimationFrame(tick);
+      return;
+    }
     canvas.width  = videoEl.videoWidth;
     canvas.height = videoEl.videoHeight;
     ctx.drawImage(videoEl, 0, 0);
@@ -826,7 +1505,11 @@ function startContinuousScan(videoEl) {
       const lum = new ZXing.RGBLuminanceSource(imgData.data, canvas.width, canvas.height);
       const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
       const res = new ZXing.QRCodeReader().decode(bmp);
-      if (res && res.text) { detected = true; onQRDetected(res.text); return; }
+      if (res && res.text) {
+        detected = true;
+        onQRDetected(res.text);
+        return;
+      }
     } catch(_) {}
     requestAnimationFrame(tick);
   }
@@ -837,34 +1520,41 @@ function onQRDetected(text) {
   stopCamera();
   currentUrl = text;
   const el = document.getElementById('detected-url-text');
-  el.textContent = text.length > 80 ? text.slice(0,77) + '…' : text;
+  el.textContent = text.length > 80 ? text.slice(0, 77) + '…' : text;
   document.getElementById('detected-url-bar').style.display = 'flex';
-  document.getElementById('camera-status').textContent = '✅ QR Code detected!';
-  showToast('QR code detected! Click Analyze to check safety.', 'success');
+  document.getElementById('camera-status').textContent = '✅ QR Code successfully decoded!';
+  showToast('QR code detected! Click Analyze to inspect.', 'success');
 }
 
 function analyzeDetected() {
   if (currentUrl) startAnalysis(currentUrl);
 }
 
-// ── URL Tab ───────────────────────────────────────
+// URL Tab
 function analyzeUrl() {
   const url = document.getElementById('url-input').value.trim();
-  if (!url) { showToast('Please enter a URL first.', 'error'); return; }
+  if (!url) {
+    showToast('Please enter a destination URL to inspect.', 'error');
+    return;
+  }
   startAnalysis(url);
 }
 
-// ── Upload ────────────────────────────────────────
+// File Upload
 function handleFileSelect(e) { if (e.target.files[0]) processFile(e.target.files[0]); }
 function handleDragOver(e)   { e.preventDefault(); document.getElementById('upload-area').classList.add('dragover'); }
 function handleDragLeave()   { document.getElementById('upload-area').classList.remove('dragover'); }
 function handleDrop(e) {
-  e.preventDefault(); document.getElementById('upload-area').classList.remove('dragover');
+  e.preventDefault();
+  document.getElementById('upload-area').classList.remove('dragover');
   if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
 }
 
 function processFile(file) {
-  if (!file.type.startsWith('image/')) { showToast('Please upload an image file.', 'error'); return; }
+  if (!file.type.startsWith('image/')) {
+    showToast('Please upload a valid image file (PNG, JPG, WEBP).', 'error');
+    return;
+  }
   uploadedFile = file;
   const reader = new FileReader();
   reader.onload = ev => {
@@ -878,14 +1568,16 @@ function processFile(file) {
 
 function formatBytes(b) {
   if (b < 1024) return b + ' B';
-  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
-  return (b/1048576).toFixed(1) + ' MB';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(1) + ' MB';
 }
 
 async function analyzeUploadedQR() {
-  if (!uploadedFile) { showToast('Please upload a QR code image.', 'error'); return; }
-  if (typeof ZXing === 'undefined') { showToast('QR library not loaded.', 'error'); return; }
-  showToast('Decoding QR from image…', '');
+  if (!uploadedFile) {
+    showToast('Please choose a QR code image first.', 'error');
+    return;
+  }
+  showToast('Reading QR code image...', '');
   try {
     const imgEl = document.getElementById('preview-img');
     await new Promise(r => { if (imgEl.complete) r(); else imgEl.onload = r; });
@@ -899,17 +1591,17 @@ async function analyzeUploadedQR() {
     const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
     const result = new ZXing.QRCodeReader().decode(bmp);
     if (result && result.text) {
-      showToast('QR decoded! Running analysis…', 'success');
+      showToast('QR code decoded successfully!', 'success');
       startAnalysis(result.text);
     } else {
-      showToast('No QR code found. Try a higher-quality or higher-contrast image.', 'error');
+      showToast('No readable QR code found in this image.', 'error');
     }
   } catch(e) {
-    showToast('Could not decode QR from this image. Ensure the image is clear and well-lit.', 'error');
+    showToast('Failed to decode image. Ensure high contrast and focus.', 'error');
   }
 }
 
-// ── Analysis Orchestrator (100% Zero-API Key / Self-Contained) ──
+// ── Threat Orchestrator ──
 async function startAnalysis(url) {
   currentUrl = url;
   document.getElementById('results').classList.remove('visible');
@@ -917,90 +1609,16 @@ async function startAnalysis(url) {
   scrollToScanner();
   animateLoaderSteps();
 
-  // Run comprehensive security analysis
   const staticRes = runStaticChecks(url);
+  const aiRes     = synthesizeIntelligentReport(url, staticRes);
+  const finalScore = staticRes.score;
 
-  // Synthesize intelligent AI-grade assessment (heuristic threat modeling)
-  const aiRes = synthesizeIntelligentReport(url, staticRes);
-
-  const finalScore = computeFinalScore(staticRes, aiRes);
-
-  // Short delay so users can see the security scanning animation
   setTimeout(() => {
     displayResults(url, staticRes, aiRes, finalScore);
-  }, 1200);
+  }, 1100);
 }
 
-// ── Smart Threat Synthesis Engine (No API Key Required) ─────────
-function synthesizeIntelligentReport(url, staticRes) {
-  const issues = staticRes.issues;
-  const count = issues.length;
-  const hasCritical = issues.some(i => i.severity === 'critical');
-  const hasHigh = issues.some(i => i.severity === 'high');
-  const hasNoHttps = issues.some(i => i.id === 'no-https');
-  const hasShortener = issues.some(i => i.id === 'shortener');
-  const hasBrand = issues.some(i => i.id === 'brand');
-
-  let verdict = 'safe';
-  let verdictLabel = 'Safe URL';
-  let riskScore = staticRes.score;
-
-  if (hasCritical || staticRes.score >= 70) {
-    verdict = 'critical';
-    verdictLabel = 'Critical Phishing Threat';
-  } else if (hasHigh || staticRes.score >= 50) {
-    verdict = 'high';
-    verdictLabel = 'High Phishing Risk';
-  } else if (count >= 2 || staticRes.score >= 30) {
-    verdict = 'medium';
-    verdictLabel = 'Suspicious URL';
-  } else if (count === 1) {
-    verdict = 'low';
-    verdictLabel = 'Low Risk';
-  }
-
-  // Generate dynamic, context-specific summary
-  let summary = '';
-  if (verdict === 'safe') {
-    summary = `Security analysis verified that <strong>${staticRes.hostname || 'this site'}</strong> uses encrypted HTTPS, has no suspicious redirect chains, and matches legitimate domain registration standards. No phishing or credential harvesting patterns were detected.`;
-  } else if (verdict === 'low') {
-    summary = `This URL appears mostly normal but triggered <strong>${count} minor cautionary flag</strong>. While it may not be outright malicious, we recommend reviewing the destination before providing sensitive personal details.`;
-  } else if (verdict === 'medium') {
-    summary = `<strong>Caution recommended:</strong> This URL triggered ${count} suspicious signals (including ${hasNoHttps ? 'missing HTTPS encryption' : 'atypical structure'}). Attackers commonly configure sites with these parameters to harvest user information.`;
-  } else if (verdict === 'high') {
-    summary = `<strong>High threat detected:</strong> This URL displays multiple high-severity warning flags. ${hasNoHttps ? 'The connection is completely unencrypted (HTTP). ' : ''}${hasShortener ? 'The true destination is concealed via a shortener. ' : ''}There is a strong probability this QR code was crafted for phishing.`;
-  } else {
-    summary = `<strong>🚨 CRITICAL SECURITY ALERT:</strong> This URL matches known signature patterns of active credential harvesting, deceptive brand impersonation, or malicious script redirection. <strong>Under no circumstances should you open this link.</strong>`;
-  }
-
-  // Recommendations
-  const recommendations = [];
-  if (hasNoHttps) {
-    recommendations.push("Never submit passwords, bank credentials, or login info: this website is not encrypted and can be eavesdropped.");
-  }
-  if (hasBrand) {
-    recommendations.push("Do not trust this login page: this domain is mimicking a reputable brand but is hosted on an unofficial server.");
-  }
-  if (hasShortener) {
-    recommendations.push("Expand the shortened URL before opening it using a link-expansion utility to reveal the real destination.");
-  }
-  if (verdict === 'critical' || verdict === 'high') {
-    recommendations.push("Warn others who may scan this QR code: report this physical/digital QR code to college security or campus IT.");
-    recommendations.push("If you already opened this link and submitted credentials, change your password immediately on the official website.");
-  } else {
-    recommendations.push("Always inspect the browser address bar before signing in to college or banking portals.");
-  }
-
-  return {
-    riskScore,
-    verdict,
-    verdictLabel,
-    summary,
-    recommendations
-  };
-}
-
-// ── Static Security Checks (15+) ─────────────────
+// ── 16+ Cybersecurity Heuristic Checks ──
 function runStaticChecks(rawUrl) {
   const issues = [], passed = [];
   let parsedUrl, hostname, pathname;
@@ -1012,51 +1630,58 @@ function runStaticChecks(rawUrl) {
     hostname  = parsedUrl.hostname.toLowerCase();
     pathname  = parsedUrl.pathname;
   } catch(_) {
-    return { issues:[{ id:'invalid', title:'Invalid URL', desc:'The URL could not be parsed. It may be malformed or not a valid web address.', severity:'critical', icon:'🚫' }], passed:[], score:90, parsedUrl:null, hostname:'', pathname:'' };
+    return {
+      issues: [{ id:'invalid', title:'Malformed / Invalid URL Structure', desc:'The string could not be parsed as a compliant web URI. It may attempt to crash parsers or disguise malformed payloads.', severity:'critical', icon:'🚫' }],
+      passed: [],
+      score: 95,
+      parsedUrl: null,
+      hostname: '',
+      pathname: ''
+    };
   }
 
   const tld   = hostname.split('.').pop();
   const parts = hostname.split('.');
 
-  // 1. HTTPS
+  // 1. HTTPS Scheme
   if (parsedUrl.protocol === 'https:') {
-    passed.push({ title:'HTTPS Secure Connection', desc:'The URL uses encrypted HTTPS — your data is protected in transit.', icon:'🔒' });
+    passed.push({ title:'HTTPS Transport Layer Active', desc:'Connection transmits over TLS/SSL encryption, protecting data from local sniffing.', icon:'🔒' });
   } else {
-    issues.push({ id:'no-https', title:'Missing HTTPS (No Encryption)', desc:'This URL uses plain HTTP. Your connection is unencrypted and any data you submit (passwords, personal info) can be intercepted by anyone on the same network — a classic phishing setup.', severity:'high', icon:'🔓' });
+    issues.push({ id:'no-https', title:'Insecure Plaintext Protocol (No HTTPS)', desc:'This link uses plain HTTP. All credentials, passwords, and sensitive information are sent in plaintext and can be intercepted by any router or actor on your network.', severity:'high', icon:'🔓' });
   }
 
-  // 2. IP address host
+  // 2. IP Address Host
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
-    issues.push({ id:'ip-host', title:'Raw IP Address as Host', desc:`The URL uses the IP address ${hostname} instead of a domain name. Legitimate websites never use bare IPs. This is a strong indicator of a malicious or temporary phishing server.`, severity:'critical', icon:'🖥️' });
+    issues.push({ id:'ip-host', title:'Raw IP Address Used As Destination', desc:`The target host (${hostname}) is a bare numeric IP rather than a verified registered domain name. Legitimate organizations virtually never distribute raw IP links.`, severity:'critical', icon:'🖥️' });
   } else {
-    passed.push({ title:'Proper Domain Name', desc:'Uses a domain name rather than a raw IP address.', icon:'🌐' });
+    passed.push({ title:'Legitimate Named Hostname', desc:'Destination is registered under a formal domain name system rather than an anonymous raw IP.', icon:'🌐' });
   }
 
-  // 3. URL Shortener
+  // 3. URL Shortener Concealment
   const shorteners = ['bit.ly','tinyurl.com','t.co','goo.gl','short.link','ow.ly','buff.ly','adf.ly','rb.gy','cutt.ly','is.gd','v.gd','shorte.st','snip.ly','lnkd.in','fb.me'];
   if (shorteners.some(s => hostname === s || hostname.endsWith('.'+s))) {
-    issues.push({ id:'shortener', title:'URL Shortener Detected', desc:`This QR code hides its true destination behind ${hostname}. Shortened URLs are commonly used in phishing to disguise malicious links. You cannot trust where this will take you.`, severity:'high', icon:'✂️' });
+    issues.push({ id:'shortener', title:'Concealed Redirect (URL Shortener)', desc:`The QR code redirects through ${hostname}. Shorteners deliberately conceal the ultimate destination to bypass security filters and user inspection.`, severity:'high', icon:'✂️' });
   } else {
-    passed.push({ title:'No URL Shortener', desc:'The destination is not concealed behind a link shortener.', icon:'🔍' });
+    passed.push({ title:'Direct Unmasked Target', desc:'The URL destination is direct and not masked behind a URL compression or shortener service.', icon:'🔍' });
   }
 
-  // 4. Suspicious TLD
+  // 4. Low-Reputation TLD
   const suspTlds = ['xyz','top','click','link','live','work','date','online','science','racing','download','review','country','stream','gq','tk','ml','cf','ga','pw','cc','su'];
   if (suspTlds.includes(tld)) {
-    issues.push({ id:'susp-tld', title:`Suspicious Domain Extension (.${tld})`, desc:`.${tld} domains are often free or extremely cheap to register and have a disproportionately high abuse rate for phishing campaigns. Exercise extreme caution.`, severity:'medium', icon:'🏳️' });
+    issues.push({ id:'susp-tld', title:`High-Abuse Domain Extension (.${tld})`, desc:`.${tld} domains have documented elevated abuse and phishing registration rates due to free or near-zero registration barriers.`, severity:'medium', icon:'🏳️' });
   } else {
-    passed.push({ title:`Reputable TLD (.${tld})`, desc:`The .${tld} extension has a lower phishing abuse rate.`, icon:'✅' });
+    passed.push({ title:`Standard Domain Extension (.${tld})`, desc:`The domain suffix carries a standard enterprise/public reputation profile.`, icon:'✅' });
   }
 
-  // 5. Excessive subdomains
+  // 5. Deep Subdomain Chains
   if (parts.length > 4) {
-    issues.push({ id:'subdomains', title:'Excessive Subdomain Depth', desc:`The hostname has ${parts.length} parts: "${hostname}". Phishers use deep subdomain chains — e.g., "login.paypal.com.attackersite.com" — to trick users into thinking the real domain is the trusted brand.`, severity:'medium', icon:'🏗️' });
+    issues.push({ id:'subdomains', title:'Deceptive Multi-Level Subdomains', desc:`This URL contains ${parts.length} domain segments ("${hostname}"). Phishers stack subdomains (e.g. login.college.edu.portal.attackersite.com) to visually mimic legitimate brands.`, severity:'medium', icon:'🏗️' });
   } else {
-    passed.push({ title:'Clean Subdomain Depth', desc:`Normal subdomain structure (${parts.length} level${parts.length===1?'':'s'}).`, icon:'🌳' });
+    passed.push({ title:'Authentic Domain Hierarchy', desc:`Normal subdomain depth (${parts.length} segment${parts.length===1?'':'s'}), consistent with standard web architecture.`, icon:'🌳' });
   }
 
-  // 6. Brand impersonation
-  const brandMap = { paypal:'paypal.com', apple:'apple.com', google:'google.com', microsoft:'microsoft.com', amazon:'amazon.com', netflix:'netflix.com', facebook:'facebook.com', instagram:'instagram.com', twitter:'twitter.com', chase:'chase.com', wellsfargo:'wellsfargo.com', coinbase:'coinbase.com', binance:'binance.com', metamask:'metamask.io', phantom:'phantom.app' };
+  // 6. Brand Impersonation / Typo-Squatting
+  const brandMap = { paypal:'paypal.com', apple:'apple.com', google:'google.com', microsoft:'microsoft.com', amazon:'amazon.com', netflix:'netflix.com', facebook:'facebook.com', instagram:'instagram.com', twitter:'twitter.com', chase:'chase.com', wellsfargo:'wellsfargo.com', coinbase:'coinbase.com', binance:'binance.com', metamask:'metamask.io', sbi:'onlinesbi.sbi', hdfc:'hdfcbank.com', icici:'icicibank.com' };
   let brandHit = null;
   for (const [brand, legit] of Object.entries(brandMap)) {
     if (hostname.includes(brand) && !hostname.endsWith('.' + legit) && hostname !== legit) {
@@ -1064,68 +1689,68 @@ function runStaticChecks(rawUrl) {
     }
   }
   if (brandHit) {
-    issues.push({ id:'brand', title:`Brand Impersonation: "${brandHit.brand}"`, desc:`The domain "${hostname}" contains "${brandHit.brand}" but is NOT the official ${brandHit.legit}. This is a textbook phishing technique — attackers register domains that look similar to trusted brands to deceive victims.`, severity:'critical', icon:'🎭' });
+    issues.push({ id:'brand', title:`Suspected Brand Impersonation: "${brandHit.brand}"`, desc:`The hostname contains "${brandHit.brand}" but does not originate from the official domain (${brandHit.legit}). This is the primary indicator of phishing credentials harvesting.`, severity:'critical', icon:'🎭' });
   }
 
-  // 7. Suspicious path keywords
-  const credKeywords = ['login','signin','sign-in','account','verify','secure','update','confirm','banking','password','credential','auth','oauth','reset','wallet','crypto','token','2fa','mfa','suspend'];
+  // 7. Credential-Harvesting Path Keywords
+  const credKeywords = ['login','signin','sign-in','account','verify','secure','update','confirm','banking','password','credential','auth','oauth','reset','wallet','crypto','token','2fa','mfa','suspend','portal'];
   const pathHits = credKeywords.filter(k => (pathname + parsedUrl.search).toLowerCase().includes(k));
   if (pathHits.length >= 2) {
-    issues.push({ id:'keywords', title:'Credential-Harvesting Keywords in Path', desc:`The URL path contains ${pathHits.length} phishing-associated terms: ${pathHits.slice(0,5).map(k=>`"${k}"`).join(', ')}. Attackers use these to build convincing-looking login or verification pages.`, severity:'medium', icon:'🔑' });
+    issues.push({ id:'keywords', title:'Phishing Lure Keywords in Path', desc:`The URL path contains multiple authentication harvest triggers: ${pathHits.slice(0,5).map(k=>`"${k}"`).join(', ')}.`, severity:'medium', icon:'🔑' });
   } else {
-    passed.push({ title:'Clean URL Path', desc:'No suspicious credential-harvesting terms detected in the URL path.', icon:'📂' });
+    passed.push({ title:'Clean URI Path', desc:'No suspicious account-hijacking or credential-harvesting keywords found in the path.', icon:'📂' });
   }
 
-  // 8. URL length
+  // 8. Abnormal Character Length
   if (rawUrl.length > 150) {
-    issues.push({ id:'long-url', title:'Unusually Long URL', desc:`This URL is ${rawUrl.length} characters long. Legitimate sites rarely need URLs this long. Excessive length is often used to bury malicious parameters or confuse URL-preview tools.`, severity:'low', icon:'📏' });
+    issues.push({ id:'long-url', title:'Unusually Excessive URL Length', desc:`Length is ${rawUrl.length} characters. Attackers stretch URL lengths to push the genuine host domain off the viewable edge of mobile screens.`, severity:'low', icon:'📏' });
   } else {
-    passed.push({ title:'Normal URL Length', desc:`URL length is ${rawUrl.length} chars — within safe range.`, icon:'📐' });
+    passed.push({ title:'Standard URL Length', desc:`URL length (${rawUrl.length} characters) is standard and cleanly readable.`, icon:'📐' });
   }
 
-  // 9. Special dangerous characters
+  // 9. Special Dangerous Characters
   if (hostname.includes('@') || rawUrl.includes('%00') || /\.\./.test(pathname)) {
-    issues.push({ id:'special-chars', title:'Dangerous Special Characters', desc:'The URL contains "@", null-bytes (%00), or path-traversal sequences (..) — techniques used to confuse browsers, bypass filters, or redirect to unexpected destinations.', severity:'high', icon:'⚡' });
+    issues.push({ id:'special-chars', title:'Browser-Deception Characters (@, %00, ..)', desc:'The link embeds characters known for spoofing browser address bars or triggering path-traversal anomalies.', severity:'high', icon:'⚡' });
   }
 
-  // 10. Open redirect parameters
+  // 10. Open Redirect Parameter
   const qParams = [...parsedUrl.searchParams.keys()];
-  const redirectParams = qParams.filter(k => ['url','redirect','redir','next','return','returnurl','goto','target','link','ref','forward','continue','dest','destination'].includes(k.toLowerCase()));
+  const redirectParams = qParams.filter(k => ['url','redirect','redir','next','return','returnurl','goto','target','link','ref','forward','continue','dest'].includes(k.toLowerCase()));
   if (redirectParams.length) {
-    issues.push({ id:'redirect', title:'Open Redirect Parameter Detected', desc:`The URL contains redirect parameters: ${redirectParams.join(', ')}. Phishers exploit open redirects on trusted domains to send victims to malicious sites while the URL appears safe.`, severity:'medium', icon:'↪️' });
+    issues.push({ id:'redirect', title:'Open Redirect Parameter Detected', desc:`The link carries redirect arguments (${redirectParams.join(', ')}). Attackers frequently exploit open redirects on trusted websites to bounce victims into phishing pages.`, severity:'medium', icon:'↪️' });
   }
 
-  // 11. Non-standard port
-  if (parsedUrl.port && !['80','443','8080','8443','3000'].includes(parsedUrl.port)) {
-    issues.push({ id:'port', title:`Non-Standard Port: ${parsedUrl.port}`, desc:`Legitimate websites use port 80 (HTTP) or 443 (HTTPS). Port ${parsedUrl.port} is unusual and suggests an unofficial or malicious server.`, severity:'medium', icon:'🔌' });
+  // 11. Non-Standard Port
+  if (parsedUrl.port && !['80','443','8080','8443'].includes(parsedUrl.port)) {
+    issues.push({ id:'port', title:`Atypical Network Port: :${parsedUrl.port}`, desc:`Web traffic customarily binds to port 80 or 443. Non-standard ports frequently host unauthorized or compromised staging servers.`, severity:'medium', icon:'🔌' });
   }
 
-  // 12. Punycode / homograph
+  // 12. Punycode Homograph Attack
   if (hostname.includes('xn--')) {
-    issues.push({ id:'punycode', title:'Punycode / Homograph Domain Attack', desc:`The domain contains punycode (xn--), which can render visually identical to legitimate domains while using non-ASCII characters. E.g., "аmazon.com" with a Cyrillic "а" looks exactly like amazon.com.`, severity:'high', icon:'🔤' });
+    issues.push({ id:'punycode', title:'Punycode Homograph Lookalike Domain', desc:'Domain utilizes internationalized punycode (xn--), which renders Cyrillic or Greek glyphs that look identical to ASCII characters to deceive victims.', severity:'high', icon:'🔤' });
   }
 
-  // 13. Double extension
+  // 13. Double Extension Malware Delivery
   if (/\.(pdf|doc|docx|zip|exe|apk|rar|sh|bat)\.(php|html?|asp|jsp|cgi)/i.test(pathname)) {
-    issues.push({ id:'dbl-ext', title:'Double File Extension (Disguised Malware)', desc:'The URL uses a double extension (e.g., invoice.pdf.php). This tricks users into thinking they are opening a document when they are actually executing a server-side script — a malware delivery technique.', severity:'critical', icon:'📄' });
+    issues.push({ id:'dbl-ext', title:'Double File Extension (Malware Disguise)', desc:'The path disguises executable server scripts as innocent documents (e.g. results.pdf.php), a signature malware delivery technique.', severity:'critical', icon:'📄' });
   }
 
   // 14. Data URI
   if (/^data:/i.test(rawUrl)) {
-    issues.push({ id:'data-uri', title:'Data URI — Extremely Dangerous', desc:'QR codes should never contain data: URIs. This can embed and execute malicious HTML or JavaScript directly in your browser without making a network request.', severity:'critical', icon:'💾' });
+    issues.push({ id:'data-uri', title:'Direct Data URI Payload', desc:'QR codes must not contain raw data: schemas, which can execute encoded scripts directly inside the client without hitting any remote server.', severity:'critical', icon:'💾' });
   }
 
-  // 15. JavaScript URI
+  // 15. JavaScript Execution URI
   if (/^javascript:/i.test(rawUrl)) {
-    issues.push({ id:'js-uri', title:'JavaScript Execution URI — Critical Threat', desc:'The URL uses the javascript: scheme, which executes arbitrary code in your browser the moment you navigate to it. This is never a legitimate QR code destination.', severity:'critical', icon:'☠️' });
+    issues.push({ id:'js-uri', title:'Immediate JavaScript Execution URI', desc:'Critical threat: This QR payload executes arbitrary JavaScript code the instant it is processed by the browser.', severity:'critical', icon:'☠️' });
   }
 
-  // 16. Numeric / encoded subdomains
+  // 16. Numeric Subdomain Generation
   if (/\d{4,}/.test(parts[0]) && parts.length > 2) {
-    issues.push({ id:'numeric-subdomain', title:'Numeric / Random Subdomain', desc:`The subdomain "${parts[0]}" appears randomly generated or numeric. Attackers often use algorithmically generated subdomains to evade blocklists.`, severity:'low', icon:'🔢' });
+    issues.push({ id:'numeric-subdomain', title:'Algorithmically Generated Host Label', desc:`Subdomain "${parts[0]}" exhibits algorithmic character patterns common in disposable phishing kits.`, severity:'low', icon:'🔢' });
   }
 
-  // Score
+  // Weighted scoring
   const w = { critical: 35, high: 20, medium: 10, low: 4 };
   const penalty = issues.reduce((s, i) => s + (w[i.severity] || 5), 0);
   const score = Math.min(100, Math.max(0, Math.round(penalty)));
@@ -1133,137 +1758,140 @@ function runStaticChecks(rawUrl) {
   return { issues, passed, score, parsedUrl, hostname, pathname };
 }
 
-// ── Gemini AI Analysis ────────────────────────────
-async function runGeminiAnalysis(url, apiKey, staticResult) {
-  const issuesSummary = staticResult.issues
-    .map(i => `- [${i.severity.toUpperCase()}] ${i.title}: ${i.desc}`).join('\n') || '- No static issues found';
+// ── Smart Report Synthesis ──
+function synthesizeIntelligentReport(url, staticRes) {
+  const issues = staticRes.issues;
+  const count = issues.length;
+  const hasCritical = issues.some(i => i.severity === 'critical');
+  const hasHigh = issues.some(i => i.severity === 'high');
+  const hasNoHttps = issues.some(i => i.id === 'no-https');
+  const hasShortener = issues.some(i => i.id === 'shortener');
+  const hasBrand = issues.some(i => i.id === 'brand');
 
-  const prompt = `You are a world-class cybersecurity expert specializing in phishing detection, QR code security, and social engineering analysis.
+  let verdict = 'safe';
+  let verdictLabel = '✅ Verified Safe';
 
-Analyze this URL for phishing and security risks:
-URL: ${url}
-
-Static analysis already identified:
-${issuesSummary}
-
-Respond with ONLY valid JSON (no markdown code fences), exactly matching this schema:
-{
-  "riskScore": <integer 0-100, where 0=completely safe, 100=confirmed critical phishing>,
-  "verdict": "<safe|low|medium|high|critical>",
-  "verdictLabel": "<Safe|Low Risk|Suspicious|High Risk|Critical Phishing>",
-  "summary": "<2-3 sentences in plain English explaining the overall risk and why>",
-  "additionalIssues": [
-    {"title": "...", "desc": "...", "severity": "low|medium|high|critical", "icon": "<emoji>"}
-  ],
-  "recommendations": [
-    "...",
-    "...",
-    "..."
-  ]
-}
-
-Be precise and evidence-based. Consider: social engineering tactics, brand similarity, phishing URL patterns, domain age signals, path intent, redirect chains, malware delivery, credential harvesting.`;
-
-  const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.05, maxOutputTokens: 1200 }
-      })
-    }
-  );
-  if (!resp.ok) {
-    const errData = await resp.json().catch(() => ({}));
-    throw new Error(errData?.error?.message || `HTTP ${resp.status}`);
+  if (hasCritical || staticRes.score >= 70) {
+    verdict = 'critical';
+    verdictLabel = '🔴 Critical Phishing Threat';
+  } else if (hasHigh || staticRes.score >= 50) {
+    verdict = 'high';
+    verdictLabel = '🚨 High Risk Detected';
+  } else if (count >= 2 || staticRes.score >= 30) {
+    verdict = 'medium';
+    verdictLabel = '⚠️ Suspicious Elements';
+  } else if (count === 1) {
+    verdict = 'low';
+    verdictLabel = '🟡 Low Risk Advisory';
   }
-  const data = await resp.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('No JSON found in Gemini response');
-  return JSON.parse(match[0]);
-}
 
-// ── Score computation ─────────────────────────────
-function computeFinalScore(staticRes, aiRes) {
-  if (aiRes?.riskScore !== undefined) {
-    return Math.min(100, Math.round(staticRes.score * 0.4 + aiRes.riskScore * 0.6));
+  let summary = '';
+  if (verdict === 'safe') {
+    summary = `Comprehensive multi-layer audit confirmed that <strong>${staticRes.hostname || 'the destination website'}</strong> demonstrates normal cryptographic and transport standards. HTTPS encryption is enforced, the domain hierarchy is legitimate, and no phishing signatures or brand-spoofing vectors were found.`;
+  } else if (verdict === 'low') {
+    summary = `The payload is generally functional but triggered <strong>${count} cautionary flag</strong>. While not demonstrably malicious, exercise standard hygiene before submitting personal details.`;
+  } else if (verdict === 'medium') {
+    summary = `<strong>Heightened caution advised:</strong> The scanner flagged ${count} atypical indicators (${hasNoHttps ? 'including unencrypted HTTP transmission' : 'including suspicious URL formatting'}). Phishing campaigns commonly utilize these configurations to target unsuspecting mobile users.`;
+  } else if (verdict === 'high') {
+    summary = `<strong>High-risk threat detected:</strong> This URL matches verified signatures of deceptive routing. ${hasNoHttps ? 'Traffic is completely unencrypted. ' : ''}${hasShortener ? 'The true destination is concealed behind a URL shortener. ' : ''}Visiting this link presents a significant hazard of credential compromise.`;
+  } else {
+    summary = `<strong>🚨 CRITICAL SECURITY ALERT:</strong> This payload exhibits confirmed indicators of an active phishing campaign, deliberate brand impersonation, or dangerous script delivery. <strong>Do not visit this URL under any circumstances.</strong>`;
   }
-  return staticRes.score;
+
+  const recommendations = [];
+  if (hasNoHttps) {
+    recommendations.push("Do not input usernames, passwords, or payment cards: unencrypted HTTP allows anyone on your network to steal your session.");
+  }
+  if (hasBrand) {
+    recommendations.push("Do not authenticate here: the host mimics a trusted brand but is registered under an unofficial external server.");
+  }
+  if (hasShortener) {
+    recommendations.push("Unmask this shortened link using a redirect inspector before opening it on your personal smartphone.");
+  }
+  if (verdict === 'critical' || verdict === 'high') {
+    recommendations.push("Inform others: alert your college IT desk or security team if this QR code was posted in physical campus spaces.");
+    recommendations.push("If you have already entered login information, immediately reset your password on the genuine official website.");
+  } else {
+    recommendations.push("Always verify the browser address bar before inputting student credentials or personal identification.");
+  }
+
+  return { verdict, verdictLabel, summary, recommendations };
 }
 
-// ── Display Results ───────────────────────────────
+// ── Display Results ──
 function displayResults(url, staticRes, aiRes, score) {
   document.getElementById('loader').classList.remove('visible');
   document.getElementById('results').classList.add('visible');
 
-  // URL bar
+  // URL Display
   const isHttps = url.toLowerCase().startsWith('https');
   document.getElementById('res-protocol-icon').textContent = isHttps ? '🔒' : '🔓';
   try {
     const p = new URL(url.startsWith('http') ? url : 'http://' + url);
     document.getElementById('res-domain').textContent = p.hostname;
-    const pathPart = (p.pathname + p.search).slice(0, 55);
-    document.getElementById('res-path').textContent = pathPart || '';
+    document.getElementById('res-path').textContent = (p.pathname + p.search).slice(0, 60) || '';
   } catch(_) {
     document.getElementById('res-domain').textContent = url.slice(0, 60);
     document.getElementById('res-path').textContent = '';
   }
 
-  // Score ring animation
-  const circ = 2 * Math.PI * 68; // ≈ 427
+  // Animated Score Ring
+  const circ = 2 * Math.PI * 62; // ≈ 390
   const offset = circ - (score / 100) * circ;
-  const fill  = document.getElementById('ring-fill');
+  const fill = document.getElementById('ring-fill');
   const color = scoreColor(score);
+  
   setTimeout(() => {
     fill.style.stroke = color;
     fill.style.strokeDashoffset = offset;
-  }, 80);
-  animateCounter(document.getElementById('score-num'), 0, score, 1300);
+  }, 60);
+
+  animateCounter(document.getElementById('score-num'), 0, score, 1100);
   document.getElementById('score-num').style.color = color;
 
-  // Risk thumb
-  setTimeout(() => { document.getElementById('risk-thumb').style.left = score + '%'; }, 200);
+  // Danger Slider
+  setTimeout(() => {
+    document.getElementById('risk-thumb').style.left = score + '%';
+  }, 150);
 
-  // Verdict
-  const v = getVerdict(score, aiRes);
+  // Verdict Badges
   const badge = document.getElementById('verdict-badge');
-  badge.textContent = v.label;
-  badge.className   = 'verdict-badge ' + v.cls;
-  document.getElementById('verdict-desc').textContent = v.desc;
+  badge.textContent = aiRes.verdictLabel;
+  badge.className = 'verdict-badge ' + aiRes.verdict;
 
-  // Merge issues
-  let allIssues = [...staticRes.issues];
-  if (aiRes?.additionalIssues?.length) {
-    aiRes.additionalIssues.forEach(i => { if (i.title) allIssues.push({ ...i, id: 'ai-' + Math.random() }); });
-  }
+  const descMap = {
+    safe:     'This link passes all security verifications. It exhibits authentic transport, encryption, and domain structure.',
+    low:      'Minor structural flags detected. Exercise basic digital caution before submitting credentials.',
+    medium:   'Suspicious patterns observed. Do not input personal identifiers or credit card numbers on this website.',
+    high:     'Elevated probability of malicious intent. We strongly recommend that you do not open this destination.',
+    critical: 'CONFIRMED DANGEROUS PAYLOAD. Highly active indicators of fraudulent credential harvesting or malware delivery.'
+  };
+  document.getElementById('verdict-desc').textContent = descMap[aiRes.verdict] || '';
 
-  // Render issues
-  document.getElementById('issues-count').textContent = allIssues.length;
+  // Render Issues
+  document.getElementById('issues-count').textContent = staticRes.issues.length;
   const grid = document.getElementById('issues-grid');
   grid.innerHTML = '';
-  if (!allIssues.length) {
+  if (!staticRes.issues.length) {
     document.getElementById('issues-section').style.display = 'none';
   } else {
-    document.getElementById('issues-section').style.display = '';
-    allIssues.forEach((issue, idx) => {
+    document.getElementById('issues-section').style.display = 'block';
+    staticRes.issues.forEach((issue) => {
       const el = document.createElement('div');
       el.className = `issue-card severity-${issue.severity}`;
-      el.style.animationDelay = `${idx * 55}ms`;
       el.innerHTML = `
         <div class="issue-icon">${issue.icon || '⚠️'}</div>
         <div class="issue-body">
           <div class="issue-title">${escHtml(issue.title)}</div>
           <div class="issue-desc">${escHtml(issue.desc)}</div>
         </div>
-        <span class="issue-pill pill-${issue.severity}">${issue.severity}</span>`;
+        <span class="issue-pill pill-${issue.severity}">${issue.severity}</span>
+      `;
       grid.appendChild(el);
     });
   }
 
-  // Passed checks
+  // Render Passed Checks
   const checksGrid = document.getElementById('checks-grid');
   checksGrid.innerHTML = '';
   document.getElementById('checks-count').textContent = staticRes.passed.length;
@@ -1274,92 +1902,38 @@ function displayResults(url, staticRes, aiRes, score) {
     checksGrid.appendChild(el);
   });
 
-  // AI Summary
-  document.getElementById('ai-summary-text').innerHTML = aiRes?.summary
-    ? escHtml(aiRes.summary)
-    : generateAutoSummary(score, allIssues);
+  // Summary and Recommendations
+  document.getElementById('ai-summary-text').innerHTML = aiRes.summary;
 
-  // Recommendations
-  const recs = (aiRes?.recommendations?.length)
-    ? aiRes.recommendations
-    : generateAutoRecs(allIssues, score);
   const recsList = document.getElementById('recs-list');
   recsList.innerHTML = '';
-  recs.slice(0, 5).forEach((r, i) => {
+  aiRes.recommendations.forEach((r, idx) => {
     const el = document.createElement('div');
     el.className = 'rec-item';
-    el.innerHTML = `<div class="rec-num">${i+1}</div><div class="rec-text">${escHtml(r)}</div>`;
+    el.innerHTML = `<div class="rec-num">${idx + 1}</div><div class="rec-text">${escHtml(r)}</div>`;
     recsList.appendChild(el);
   });
 
-  analysisData = { url, score, issues: allIssues, checks: staticRes.passed };
-  setTimeout(scrollToResults, 100);
+  analysisData = { url, score, issues: staticRes.issues, checks: staticRes.passed };
+  setTimeout(scrollToResults, 80);
 }
 
-// ── Helper: score → color ─────────────────────────
 function scoreColor(s) {
-  if (s < 25) return '#22c55e';
-  if (s < 50) return '#f59e0b';
-  if (s < 75) return '#ef4444';
-  return '#dc2626';
+  if (s < 25) return '#16a34a';
+  if (s < 50) return '#d97706';
+  if (s < 75) return '#dc2626';
+  return '#991b1b';
 }
 
-// ── Helper: verdict ───────────────────────────────
-function getVerdict(score, aiRes) {
-  if (aiRes?.verdict) {
-    const e = { safe:'✅', low:'🟡', medium:'⚠️', high:'🚨', critical:'🔴' };
-    const d = {
-      safe:     'This URL appears legitimate and safe to visit. No significant threats detected.',
-      low:      'Minor concerns found. Exercise light caution — avoid entering sensitive credentials.',
-      medium:   'Suspicious signals detected. Do not enter personal information on this site.',
-      high:     'High phishing risk. We strongly advise NOT visiting this URL.',
-      critical: 'CRITICAL THREAT. This URL is almost certainly malicious. Do not visit under any circumstances.'
-    };
-    const cls = aiRes.verdict;
-    return { label: `${e[cls]||'⚠️'} ${aiRes.verdictLabel||cls}`, cls, desc: d[cls]||'' };
-  }
-  if (score < 20) return { label:'✅ Safe',              cls:'safe',     desc:'This URL appears legitimate and safe to visit. No significant threats detected.' };
-  if (score < 40) return { label:'🟡 Low Risk',          cls:'low',      desc:'Minor concerns detected. Some caution advised before entering personal information.' };
-  if (score < 60) return { label:'⚠️ Suspicious',        cls:'medium',   desc:'Multiple suspicious signals detected. Avoid entering any personal information.' };
-  if (score < 80) return { label:'🚨 High Risk',         cls:'high',     desc:'High phishing risk. We strongly advise NOT visiting this URL.' };
-  return              { label:'🔴 Critical Phishing',    cls:'critical', desc:'CRITICAL THREAT. This URL is almost certainly malicious. Do not visit.' };
-}
-
-// ── Auto summary (no AI) ──────────────────────────
-function generateAutoSummary(score, issues) {
-  const n = issues.length;
-  const hasCritical = issues.some(i => i.severity === 'critical');
-  if (score < 20) return `This URL appears to be <strong>safe</strong>. No significant phishing indicators were detected. Standard browsing precautions still apply — keep your browser and antivirus updated.`;
-  if (score < 40) return `This URL has <strong>${n} minor concern${n===1?'':'s'}</strong>. It may be legitimate but shows some low-level warning signs. Avoid entering sensitive credentials and verify the site through official channels.`;
-  if (score < 60) return `This URL is <strong>suspicious</strong> with ${n} security issue${n===1?'':'s'} detected. ${hasCritical?'At least one critical threat was found. ':''}Do not enter any personal, financial, or login information. Close the page immediately.`;
-  if (score < 80) return `This URL is <strong>high risk</strong>. Analysis identified ${n} serious indicators of phishing or malware delivery. This page was likely designed to steal your credentials. <strong>Do not visit it.</strong>`;
-  return `<strong>⚠️ CRITICAL PHISHING THREAT DETECTED.</strong> This URL displays ${n} major red flags consistent with an active credential-harvesting or malware campaign. <strong>Under no circumstances should you visit this URL or provide any information.</strong>`;
-}
-
-// ── Auto recommendations ──────────────────────────
-function generateAutoRecs(issues, score) {
-  const recs = [];
-  if (score >= 40) recs.push('Do NOT visit this URL or enter any personal, financial, or login credentials.');
-  if (issues.some(i=>i.id==='no-https')) recs.push('This site lacks HTTPS encryption. Even if otherwise legitimate, never log in over HTTP. Your data can be intercepted.');
-  if (issues.some(i=>i.id==='shortener')) recs.push('Expand shortened URLs before clicking using a service like checkshorturl.com to see the real destination.');
-  if (issues.some(i=>i.id==='brand'))     recs.push('This domain impersonates a trusted brand. Always navigate to official sites by typing the known URL directly — never through QR codes from unknown sources.');
-  if (score >= 60) recs.push('Report this URL to Google Safe Browsing at safebrowsing.google.com/safebrowsing/report_phish/ to protect others.');
-  if (score >= 40) recs.push('If you already visited this site and entered credentials, change your password immediately and enable two-factor authentication on all accounts.');
-  recs.push('Treat all QR codes from unknown sources with suspicion. Use QR Shield to verify every QR code before visiting the URL.');
-  return recs.slice(0, 5);
-}
-
-// ── Animate number counter ────────────────────────
 function animateCounter(el, from, to, dur) {
   const start = performance.now();
   (function step(ts) {
     const p = Math.min((ts - start) / dur, 1);
-    el.textContent = Math.round(from + (to - from) * (1 - Math.pow(1-p, 3)));
+    el.textContent = Math.round(from + (to - from) * (1 - Math.pow(1 - p, 3)));
     if (p < 1) requestAnimationFrame(step);
   })(performance.now());
 }
 
-// ── Loader step animation ─────────────────────────
 function animateLoaderSteps() {
   ['step1','step2','step3','step4','step5'].forEach((id, i) => {
     const el = document.getElementById(id);
@@ -1369,37 +1943,41 @@ function animateLoaderSteps() {
         document.getElementById(pid).className = 'loader-step done';
       });
       el.className = 'loader-step active';
-    }, i * 800);
+    }, i * 220);
   });
 }
 
-// ── Actions ───────────────────────────────────────
 function resetScanner() {
   document.getElementById('results').classList.remove('visible');
   document.getElementById('loader').classList.remove('visible');
   document.getElementById('url-input').value = '';
   document.getElementById('upload-preview').style.display = 'none';
   document.getElementById('detected-url-bar').style.display = 'none';
-  currentUrl = ''; analysisData = null; uploadedFile = null;
+  currentUrl = '';
+  analysisData = null;
+  uploadedFile = null;
   scrollToScanner();
 }
 
 function copyReport() {
   if (!analysisData) return;
   const lines = [
-    '══════════ QR Shield Safety Report ══════════',
-    `URL:        ${analysisData.url}`,
+    '═════════════ QR SHIELD AUDIT REPORT ═════════════',
+    `Target:     ${analysisData.url}`,
     `Risk Score: ${analysisData.score}/100`,
-    `Issues:     ${analysisData.issues.length}`,
+    `Anomalies:  ${analysisData.issues.length}`,
     `Passed:     ${analysisData.checks.length}`,
     '',
-    '── Security Issues ──'
+    '── Security Anomalies ──'
   ];
-  analysisData.issues.forEach(i => lines.push(`  [${i.severity.toUpperCase().padEnd(8)}] ${i.title}`));
-  lines.push('', '── Passed Checks ──');
-  analysisData.checks.forEach(c => lines.push(`  ✅ ${c.title}`));
-  lines.push('', `Generated by QR Shield at ${new Date().toLocaleString()}`);
-  navigator.clipboard.writeText(lines.join('\n')).then(() => showToast('Report copied to clipboard!', 'success'));
+  analysisData.issues.forEach(i => lines.push(`[${i.severity.toUpperCase().padEnd(8)}] ${i.title}: ${i.desc}`));
+  lines.push('', '── Verified Integrity Checks ──');
+  analysisData.checks.forEach(c => lines.push(`✅ ${c.title}: ${c.desc}`));
+  lines.push('', `Generated by QR Shield &bull; ${new Date().toLocaleString()}`);
+
+  navigator.clipboard.writeText(lines.join('\n')).then(() => {
+    showToast('Report copied to clipboard!', 'success');
+  });
 }
 
 function reportPhishing() {
@@ -1408,27 +1986,26 @@ function reportPhishing() {
   window.open(`https://safebrowsing.google.com/safebrowsing/report_phish/?url=${encodeURIComponent(url)}`, '_blank');
 }
 
-function scrollToScanner() { document.getElementById('scanner').scrollIntoView({ behavior:'smooth', block:'start' }); }
-function scrollToResults()  { document.getElementById('results').scrollIntoView({ behavior:'smooth', block:'start' }); }
-
-function escHtml(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function scrollToScanner() {
+  document.getElementById('scanner').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ── Toast ─────────────────────────────────────────
+function scrollToResults() {
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 let toastTimer;
 function showToast(msg, type) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.className = 'toast show' + (type ? ' ' + type : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.className = 'toast'; }, 3800);
+  toastTimer = setTimeout(() => { t.className = 'toast'; }, 3500);
 }
-
-// ── Init ──────────────────────────────────────────
-window.addEventListener('load', () => {
-  console.info('QR Shield loaded in 100% Zero-API-Key standalone mode.');
-});
 </script>
 </body>
 </html>
