@@ -1,6 +1,6 @@
 # 🛡️ QR Shield — Anti-Quishing & QRLJacking Defense Engine
 
-> **Live Demo →** [https://YOUR-USERNAME.github.io/qr-shield](https://YOUR-USERNAME.github.io/qr-shield)
+> **Live Demo →** qr-shields.netlify.app **
 
 A modern, single-page cybersecurity web application built for the **IDT Lab** that detects and neutralizes QR code-based threats — including Quishing attacks, QRLJacking session hijacks, Typo-Squatting domains, and fraudulent UPI payment requests — **before** the device executes the payload.
 
